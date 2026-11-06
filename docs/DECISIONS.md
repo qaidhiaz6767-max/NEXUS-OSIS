@@ -23,3 +23,14 @@
 
 ## ADR-008 — Deploy only to localhost in the current phase
 **Decision:** do not expose the HTTP server on LAN/WAN, tunnel publicly or use it as a multi-user school server. **Revisit:** with authentication, security review and hosting design.
+
+## ADR-009 — Independent local workspace files and explicit cloud opt-in
+**Decision:** use allowlisted workspace IDs, distinct database paths, an ownership marker,
+and trusted host capability grants. Keep the OSIS database path and original tables.
+Cloud AI additionally requires `--enable-ai`. **Rationale:** reduce accidental context
+mixing and surprise disclosure without pretending to provide multi-user authentication.
+
+## ADR-010 — Atomic bounded plans and additive provenance
+**Decision:** one approved transaction per plan, at most five local writes; store memory
+provenance in sidecar tables. **Rationale:** prevent partial workflows and retain old
+SQLite column compatibility. External effects and symbolic step references are deferred.

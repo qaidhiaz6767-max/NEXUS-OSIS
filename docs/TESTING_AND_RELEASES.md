@@ -1,62 +1,63 @@
-# Test strategy and release gates
+# Tests and release evidence — Mission 001
 
-## Automated checks shipped
+## Runtime and checks
 
-`python3 -m unittest discover -s tests -v` runs offline and requires no paid API or live school account. GitHub Actions runs Python compile + tests on Linux with Python 3.11 and 3.13. This validates important core behavior, but **not** microphone availability, actual browser UX or remote integrations.
+Offline runtime: Python 3.11+, standard library and SQLite. The optional OpenAI
+package is not needed for tests. No live AI key or school/company accounts are
+used. Tests create temporary invented records and use loopback HTTP only.
 
-Current tests check approval-before-write, rejection, one-time approval, date/priority validation, task update and delegation, unsupported operation rejection, SQL injection handling, briefing/export, restart persistence, optional API fallback, mocked model tool proposal and event non-sending.
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q app.py core.py nexus tests
+node --check web/app.js
+```
 
-## Future test layers
+The configured GitHub Actions workflow runs compile, unit/HTTP tests and JS syntax
+checks on Python 3.11 and 3.13. Local execution evidence uses Python 3.12; a workflow
+file is not evidence that hosted CI has passed. Consult the PR's actual checks.
 
-1. **Unit:** validators, status transitions, date math, project/task models, prompt context filters.
-2. **Integration:** local HTTP API, SQLite transaction/concurrency, migrations, backup and restore.
-3. **Contract:** fake model and fake adapters validate exact tool schemas and outcomes.
-4. **Security:** origin/Host checks, state disclosure, replay, expired actions, prompt injection and secret patterns.
-5. **UI:** browser smoke checks for task approval, keyboard accessibility, speech fallback.
-6. **Privacy:** simulated data export/import, retention, no cross-workspace leakage and no real account tokens in logs.
-7. **Resilience:** network timeouts, model absence, duplicate requests, partial database failure, canceled approvals.
-8. **Release:** fresh install on Mac, upgrade from older DB backup, manual voice test, documentation review.
+## Automated coverage
 
-## Acceptance scenarios
+- Original OSIS task/event/note/fact commands, assignment/status updates and imports.
+- Validation, SQL-like text, tool allowlisting and approval-before-write.
+- Rejection, expiry, replay, concurrent double approval and rollback on failure.
+- Legacy schema migration, preserved task IDs and pending approvals; future-schema
+  refusal and rollback after an incompatible-schema migration failure.
+- Scoped workspace state, proposals, history, projects, search, exports and AI context.
+- Unknown/path-like/duplicate workspace parameters and independent capability grants.
+- Cloud opt-in and `ai` grant enforcement; fake provider output, tool rejection
+  and multiple calls grouped into one approved atomic plan.
+- Memory update/delete, source/approval provenance and rollback of sidecar changes.
+- Search wildcard escaping, persisted history, complete business-record JSON export.
+- Existing HTTP Host/Origin/body/header protections and new dashboard assets/routes.
+- Demo CLI ignores the configured real database path and uses invented records.
 
-**S1** User creates a task: before approval, row count unchanged; after approval, one row exists and audit indicates approval.
+## Optional real-browser smoke
 
-**S2** User rejects or lets approval expire: row count unchanged; cannot reuse token.
+Development-only dependencies: Playwright Python package and local Chromium at
+`/usr/bin/chromium` (adjust `executable_path` for another platform).
 
-**S3** User asks to send a WhatsApp message: offline v0.1 must not send; model has no send tool.
+```bash
+python3 tests/browser_smoke.py
+```
 
-**S4** User gives invalid date `2026-02-30`: rejected, no partial record.
+This starts a temporary local app with invented records, checks desktop rendering,
+switches to Personal, creates a project proposal in the form, approves it, verifies
+the database outcome and OSIS isolation, checks a 390px mobile width, and fails on
+browser JavaScript errors. It does not require public hosting or a paid API.
+Set `NEXUS_SCREENSHOT` to a local scratch path to capture the sample dashboard.
 
-**S5** User inserts SQL-like or HTML-like strings: stored/escaped as text; no SQL execution or page script injection.
+## Manual gates still required
 
-**S6** User restarts the app: task/event list persists.
+Before using real records: privately copy the complete SQLite file and try the
+upgrade on a copy. Restore that pre-upgrade copy to roll back. JSON record export
+is not a full database restore mechanism; it excludes chat and pending actions.
 
-**S7** User disconnects the internet or removes AI key: `/help`, `/tasks`, `/brief` continue working.
+Before a release: run a fresh Mac install, manually verify keyboard/screen-reader
+navigation, speech permissions/dictation/TTS on the owner's browser, timezone
+behavior and recovery. These hardware checks have not been completed in Linux CI.
 
-**S8** User refreshes pending approvals: correct state displayed; a previously approved ID cannot run again.
-
-**S9** User asks about facts not in the database: system expresses uncertainty rather than claiming a non-existent event.
-
-**S10** Future model reads hostile meeting notes: hostile instructions must be ignored by tool/policy layer.
-
-**S11** Future connector send fails: no misleading "delivered" status, and retry doesn't create duplicates.
-
-**S12** Future OSIS and ATLAS workspaces: querying OSIS cannot retrieve ATLAS records, even when text resembles a similar project.
-
-## Manual Mac smoke checklist
-
-- [ ] Starts with `python3 app.py` using Python 3.10+.
-- [ ] Loads at http://127.0.0.1:8765; browser can send `/brief`.
-- [ ] New dummy task appears only after approving it.
-- [ ] Restart preserves task.
-- [ ] Export calendar and backup produce local file with expected format; do not upload exports.
-- [ ] Chrome/Safari speech capability is tested; unsupported browsers show honest fallback.
-- [ ] TTS uses user-selected language and can be turned off.
-- [ ] No forced cloud key or unexpected network requests in offline mode.
-- [ ] Closing app stops server.
-
-## Release checklist
-
-A release can be tagged only if: all appropriate tests pass; planned/available features are described accurately; no actual school information or keys are present in Git; permissions have not broadened unexpectedly; the backup/migration path is tested if schema changed; and manual Mac tests for user-facing features are recorded.
-
-Use semantic versioning loosely at prototype stage (`0.1.1`, `0.2.0`, etc.). Do not call something `1.0` solely because it looks polished.
+Before external adapters: add authorization/scope, redacted audit, timeout,
+idempotency, recipient/content previews and verified-delivery tests. Before any
+remote deployment: real authentication and a fresh threat model are required.
+Do not change the loopback binding as a substitute for those controls.

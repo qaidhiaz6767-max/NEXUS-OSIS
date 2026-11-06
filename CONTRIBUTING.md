@@ -4,7 +4,7 @@ NEXUS is primarily a local project. The repository can be private while you deve
 
 1. Open an issue explaining the real need; use invented names and dummy event details.
 2. Create a branch: `git switch -c feat/short-description`.
-3. Keep `core.py` the authority for data writes; the browser and any model cannot bypass the policy/approval boundary.
+3. Keep `nexus/storage.py` and its validators the authority for data writes (`core.py` is the compatibility facade); the browser and any model cannot bypass the policy/approval boundary.
 4. Add tests for new behavior and failure cases. Run `python3 -m unittest discover -s tests -v`.
 5. Review `git status` and `git diff --cached` before every commit.
 6. Submit a pull request. Do not merge if CI fails or a high-risk permission is unclear.

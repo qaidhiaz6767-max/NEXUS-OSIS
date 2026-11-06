@@ -1,6 +1,6 @@
 # NEXUS — Security, privacy, and school-use rules
 
-NEXUS v0.1 is a personal localhost prototype. The phrase "local-first" does not guarantee security, encryption, or privacy when optional cloud features are enabled. Treat this guide as mandatory before adding integrations or real school data.
+NEXUS v0.3 is a personal localhost prototype. The phrase "local-first" does not guarantee security, encryption, or privacy when optional cloud features are enabled. Treat this guide as mandatory before adding integrations or real school data.
 
 ## 1. Data categories
 
@@ -15,7 +15,7 @@ NEXUS v0.1 is a personal localhost prototype. The phrase "local-first" does not 
 
 Even private GitHub repos may be accessible to authorized collaborators or services; private is not the same as an encrypted private vault. `.gitignore` prevents *untracked* ignored files from being staged by default, but it does not remove files already tracked. Review staged files every time.
 
-## 2. Controls in v0.1
+## 2. Controls in the current Core
 
 - Localhost-only HTTP server; not intended for remote access.
 - Model tools are allowlisted and arguments validated.
@@ -25,6 +25,21 @@ Even private GitHub repos may be accessible to authorized collaborators or servi
 - SQLite transactions and an audit event accompany decisions.
 - JS renders user/model content as text, not raw HTML.
 - `.gitignore` includes data directory and common credential/export patterns.
+
+## Mission 001 additions
+
+- Independent workspace database files and trusted capability grants; grants are
+  host configuration, not authenticated user roles. Default local owner has all grants.
+- Ownership and schema-version checks, additive transactional migrations, and
+  rollback/replay/concurrent-approval tests.
+- Cloud AI requires `--enable-ai` plus the workspace `ai` grant and a key.
+- Model-suggested facts retain provenance and enter saved memory only after approval.
+- Atomic approved plans contain at most five local writes. No external effects.
+- Memory deletion removes the saved fact/provenance, **not** historical proposal
+  payloads, chat, audit descriptions or previously exported copies.
+- New database files use mode 0600 on POSIX; existing file permissions are retained.
+- Error audit records use exception categories, not provider messages or secrets.
+- Demo mode uses temporary invented records and disables the cloud AI planner.
 
 ## 3. Known limitations and open risks
 

@@ -1,5 +1,7 @@
 # NEXUS MASTER PLAN — OSIS Chief of Staff to Executive AI Platform
 
+> Historical design/roadmap. The implemented v0.3 baseline and current limits are documented in [NEXUS Core architecture](NEXUS_CORE_ARCHITECTURE.md) and [Mission 001 plan](IMPLEMENTATION_PLAN.md).
+
 **Planning baseline:** 2026-11-06  
 **Project:** NEXUS — Neural Executive Coordination & Unified System  
 **Audience:** solo student developer, potential future contributors and reviewers  

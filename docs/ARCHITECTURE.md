@@ -1,5 +1,7 @@
 # Technical architecture — NEXUS
 
+> Historical design/roadmap. The implemented v0.3 baseline and current limits are documented in [NEXUS Core architecture](NEXUS_CORE_ARCHITECTURE.md) and [Mission 001 plan](IMPLEMENTATION_PLAN.md).
+
 ## 1. Current v0.1 implementation (working)
 
 ```text
