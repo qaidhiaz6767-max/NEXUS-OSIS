@@ -2,6 +2,8 @@
 
 ## v0.5 — Project JARVIS cognitive Core (Mission 003)
 
+- Integrated the pasted single-file frontend CSP compatibility change while retaining Mission 003 APIs and recovery locks. Exact trusted inline script/style hashes are allowed; handlers, eval and unlisted scripts remain blocked. Added HTTP and Chromium coverage without changing frontend files.
+
 - Added persistent command/plan lifecycle, verified transaction results and proposal-time record conflict checks.
 - Hardened the replaceable Responses API provider boundary, malformed/truncated tool handling, bounded context and zero automatic retries.
 - Added common bilingual intent routing, verified task references and closed read-only tool schemas.

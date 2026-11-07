@@ -17,6 +17,27 @@ All fetches must retain workspace query parameters; POSTs require JSON and
 `X-NEXUS-Local: 1`. Existing `web/api.js` already implements these conventions.
 There is no cross-origin development API or authentication layer.
 
+## Single-file frontend compatibility
+
+The server now permits inline `<script>` and `<style>` blocks in the trusted
+static HTML using SHA-256 CSP hashes derived from their exact contents. Existing
+local external modules/styles remain supported. HTML parsing ignores commented
+blocks and external-script fallback bodies, handles tag/attribute syntax, and
+normalizes line endings as browsers do. No runtime record or model response is
+turned into executable HTML or added to the policy.
+
+Keep event listeners in JavaScript (`addEventListener`) and CSS in style blocks
+or local stylesheets. Inline `onclick`/other handler attributes, `style=`
+attributes, eval, unlisted injected scripts and external network sources remain
+restricted. This compatibility change does not add a new frontend or verify
+Claude's full UI: only the pasted backend file was supplied. Do not replace the
+Mission 003 app.py wholesale with its older v0.4 counterpart; that would remove
+the current resource APIs, command tracking integration and runtime restore lock.
+
+`python3 tests/browser_csp.py` verifies a synthetic single-file UI, real Core API
+access, allowed inline script/style execution and blocked injected scripts/
+handlers in Chromium. The original dashboard browser suites also still pass.
+
 ## Recommended integration sequence
 
 1. Load readable workspaces and `/api/capabilities` for the selected workspace.

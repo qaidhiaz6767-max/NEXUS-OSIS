@@ -78,6 +78,7 @@ on the owner's Mac. Those distinctions remain explicit in current documentation.
 | nexus/memory.py, briefing.py | Deterministic selected context and actual-record reports |
 | nexus/backup.py, workspaces.py | Encrypted snapshot/recovery and cooperative app leases |
 | nexus/interfaces.py | Inactive specialist/scheduler/integration/speech protocols |
+| nexus/web_security.py, tests/test_web_security.py, tests/browser_csp.py | Trusted static inline CSP compatibility, HTTP/hash validation and actual browser enforcement |
 | tests/test_cognitive.py, test_api_contract.py, test_backup.py | Domain, HTTP, provider, failure, isolation and recovery tests |
 | requirements-security.txt, .github/workflows/tests.yml, .gitignore | Optional crypto dependency, recovery CI setup, private artifact exclusions |
 | README.md, CHANGELOG.md, docs/*.md modified in this PR | Current behavior, API/Claude contract, architecture, migration, security and release evidence |
@@ -95,11 +96,12 @@ independent check and its live outcome is visible on the PR.
 
 | Command | Result |
 |---|---|
-| `python3 -m unittest discover -s tests -q` | 111 tests passed, zero failures/errors |
+| `python3 -m unittest discover -s tests -q` | 117 tests passed, zero failures/errors |
 | `node tests/frontend.test.mjs` | 5 tests passed |
 | `node --test tests/frontend.test.mjs` | Test file passed; runner presentation may aggregate the five cases |
 | `python3 tests/browser_smoke.py` | Dashboard, workspace switch, proposal/approval and mobile width passed |
 | `python3 tests/browser_redesign.py` | All 20 existing journeys plus permission/replay/expiry/clipboard/XSS/stale-state/focus checks passed; zero external requests and JS errors |
+| `python3 tests/browser_csp.py` | Trusted inline script/style and Mission 003 API passed; unlisted scripts/handler attributes blocked; zero external requests |
 | `python3 -m compileall -q app.py core.py nexus tests` | Passed |
 | `git diff --check` | Passed |
 | `git diff --exit-code -- web` | Passed; no frontend changes |
@@ -112,6 +114,16 @@ passphrase/workspace/recovery, restored approval invalidation, live-app lock,
 uncommitted WAL exclusion, original OSIS commands and real HTTP compatibility.
 Additional edge cases cover JSON container values in scalar fields, sanitized
 GET failures and timezone-correct weekly completion without future dates.
+
+The frontend compatibility follow-up began from the published Mission 003 head
+(`567890d`) with all 111 tests passing. It integrated the hash-based static CSP
+change from the pasted v0.4 app.py without replacing the current backend or
+changing `web/`. Six additional unit/HTTP tests cover exact/content-changing
+hashes, deduplication, HTML syntax/newline handling, ignored comments/external
+bodies, non-HTML policy preservation and unchanged Core API access. Real Chromium
+also verifies permitted static inline execution and blocked injected scripts/
+handlers. Claude's actual full frontend was not included in the upload and is
+still unverified.
 
 Development failures were corrected before final verification: a backup path
 guard initially treated this executor's empty virtual `.git` mount as a real

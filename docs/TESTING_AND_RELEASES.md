@@ -4,6 +4,11 @@ Current Mission 003 results and commands: [MISSION_003_REPORT.md](MISSION_003_RE
 Install `requirements-security.txt` to run the encrypted recovery tests. The
 remaining historical test notes describe earlier releases and their results.
 
+The single-file frontend compatibility follow-up adds six CSP/hash/HTTP tests and
+`python3 tests/browser_csp.py` (same Playwright/Chromium prerequisites). It checks
+allowed exact inline blocks, real Core API access and blocked injected scripts/
+event-handler attributes using synthetic HTML, with no changes to `web/`.
+
 ## Runtime and checks
 
 Offline runtime: Python 3.11+, standard library and SQLite. The optional OpenAI

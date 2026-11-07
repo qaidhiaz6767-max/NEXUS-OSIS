@@ -21,6 +21,7 @@ from core import Coordinator, Store, HELP
 from nexus.validation import configured_timezone
 from nexus.backend_api import get_data
 from nexus.workspaces import WorkspaceRegistry
+from nexus.web_security import csp_for
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DB = Path(os.environ.get("NEXUS_DB", str(ROOT / "data" / "nexus.sqlite3")))
@@ -99,7 +100,7 @@ def handler_factory(
             self.send_header("X-Frame-Options", "DENY")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+                csp_for(data, content_type),
             )
             if filename:
                 self.send_header(

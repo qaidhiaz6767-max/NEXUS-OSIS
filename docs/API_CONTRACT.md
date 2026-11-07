@@ -19,6 +19,13 @@ present it must match either local origin at that port. There is no CORS support
 for a separately hosted frontend: serve Claude's UI through this same server.
 Workspace grants come from trusted Python configuration, never request bodies.
 
+Static HTML responses include a CSP that allows same-origin assets and exact
+SHA-256 hashes of the trusted inline script/style bodies in that file. This
+supports a single-file frontend without allowing general inline execution,
+event-handler attributes, eval or additional external connections. JSON API
+payloads are data and are never hashed into the HTML policy. No routes or request/
+response fields change as a result. See the [frontend guide](FRONTEND_INTEGRATION_GUIDE.md).
+
 JSON errors are `{"error":"description"}`. Codes: 400 invalid input or rejected
 approval execution, 403 grant/Host/Origin/header failure, 404 missing resource or
 route, 500 unexpected POST failure with sanitized message. A valid chat request

@@ -10,6 +10,13 @@ school data.
 
 Implemented and exercised with synthetic data:
 
+- Static HTML can include exact hash-authorized script/style blocks for the
+  single-file UI. There is no unsafe-inline/eval permission. CSP hashes come
+  only from the trusted static response, never runtime user/model records.
+  Event-handler attributes and unlisted script injection remain blocked in
+  Chromium tests. This protects the served document, not a compromised local
+  account that can edit its trusted HTML source.
+
 - All tools bind to the server-selected Store. Retrieved text, model arguments
   and conversation cannot grant capabilities, change file paths or approve work.
   Read tools reject unknown arguments, including attempts to choose a workspace.
