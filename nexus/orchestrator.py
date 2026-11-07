@@ -13,6 +13,7 @@ class Coordinator:
     def __init__(self, store: Store, *, allow_ai: bool = False):
         self.store = store
         self.allow_ai = allow_ai
+        self.provider_status = "not_verified"
 
     def report(self, result: dict) -> dict:
         pending = result.get("pending")
@@ -25,6 +26,7 @@ class Coordinator:
                         "status": "awaiting_approval", "approval_id": pending["id"]} for step in steps]
                       if pending else [{"tool": "respond", "status": "completed"}]),
         }
+        result["provider_status"] = self.provider_status
         return result
 
     def chat(self, message: str) -> dict:
@@ -42,11 +44,11 @@ class Coordinator:
                     result = {"message": "I'm running in private offline command mode, so natural-language AI chat isn't active. Try /brief, /tasks, /events, or /help. To turn on the conversational brain, configure an optional OPENAI_API_KEY and start with --enable-ai (this sends relevant chat/context to the API)."}
         except ValueError as exc:
             self.store.log_event("validation_error", type(exc).__name__)
-            result = {"message": f"Couldn't prepare that: {exc}"}
+            result = {"message": f"Couldn't prepare that: {exc}", "status": "error"}
         except Exception as exc:
             self.store.log_event("service_error", type(exc).__name__)
             # Keep OSIS records accessible even if the network/provider is unavailable.
-            result = {"message": f"The AI service is unavailable ({type(exc).__name__}). Your local data is safe. Use /help for offline commands."}
+            result = {"message": f"The AI service is unavailable ({type(exc).__name__}). Your local data is safe. Use /help for offline commands.", "status": "error"}
         if len(result["message"]) > 6000:
             result["message"] = result["message"][:5900] + "\n[Result truncated; use workspace search or export for more records.]"
         self.store.record("assistant", result["message"])
@@ -59,6 +61,7 @@ class Coordinator:
         try:
             from openai import OpenAI
         except ImportError:
+            self.provider_status = "unavailable"
             return {"message": "Install the optional AI package using: python3 -m pip install -r requirements-ai.txt. Offline commands still work."}
 
         # Only minimum bounded context sent; users should not enter sensitive pupil records.
@@ -91,8 +94,10 @@ class Coordinator:
                 store=False,
             )
         except Exception as exc:
+            self.provider_status = "error"
             self.store.log_event("service_error", type(exc).__name__)
             return {"message": f"The AI service is unavailable ({type(exc).__name__}). Use /help for offline commands."}
+        self.provider_status = "verified"
         calls = [o for o in getattr(response, "output", []) if getattr(o, "type", "") == "function_call"]
         if len(calls) > 1:
             if len(calls) > 5:

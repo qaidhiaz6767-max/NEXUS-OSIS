@@ -1,6 +1,6 @@
 # NEXUS Core — Mission 001 architecture
 
-Status: implemented first iteration, v0.3 prototype. NEXUS is a universal personal
+Status: implemented first iteration, v0.3 prototype. Mission 002 adds the [v0.4 interface system](UI_DESIGN_SYSTEM.md) and additive API metadata/proposal contracts without a schema migration. NEXUS is a universal personal
 AI operating system foundation; OSIS is its first operational workspace.
 
 ## Repository audit

@@ -4,9 +4,22 @@ NEXUS is a local-first personal AI operating system and executive assistant.
 OSIS is the first operational workspace; the same Core also provides independent
 containers for Personal, Academic, Research, Development, Finance and ATLAS.
 
-**v0.3 prototype:** Python-first, one trusted local operator, no required cloud
+**v0.4 Command Center prototype:** Python-first, one trusted local operator, no required cloud
 service. OpenClaw, external integrations and autonomous specialist agents are
 future extensions.
+
+## Mission 002 — Command Center redesign
+
+The new interface adds a command-first home screen with a restrained AI Core,
+a focused Assistant, Projects, Tasks, Calendar, Meetings, Memory, Approvals,
+Activity and Settings. It remains local-first with explicit approval for writes.
+Workspace switching, search, provenance and mobile layouts use real Core records.
+
+[Simple ZIP/demo walkthrough](docs/USER_INTERFACE_GUIDE.md) ·
+[Design system](docs/UI_DESIGN_SYSTEM.md) ·
+[Mission 002 report and screenshots](docs/MISSION_002_REPORT.md)
+
+![NEXUS Command Center with temporary demo records](docs/screenshots/overview-desktop.png)
 
 ## See the dashboard safely
 
@@ -132,9 +145,12 @@ node --check web/app.js
 ```
 
 The regression suite uses temporary invented records and loopback HTTP only.
+Run `node --test tests/frontend.test.mjs` for the dependency-free browser domain tests.
 For the optional UI smoke check, install Playwright in a development environment
 with Chromium at `/usr/bin/chromium`, then run `python3 tests/browser_smoke.py`.
-The runtime itself does not need Playwright or Node.
+The runtime itself does not need Playwright or Node. `python3 tests/browser_redesign.py`
+adds the full Mission 002 journeys; `python3 tests/capture_ui.py` captures sample-data
+screenshots. See the testing guide for prerequisites and limits.
 
 [Architecture](docs/NEXUS_CORE_ARCHITECTURE.md) ·
 [Implementation plan](docs/IMPLEMENTATION_PLAN.md) ·

@@ -55,7 +55,16 @@ class Store:
     def state(self) -> dict:
         self.require("read")
         with self._conn() as con:
+            con.execute("BEGIN")  # One consistent snapshot for counts and record lists.
             return {
+                "summary": {
+                    "active_projects": con.execute("SELECT count(*) FROM projects WHERE status='active'").fetchone()[0],
+                    "open_tasks": con.execute("SELECT count(*) FROM tasks WHERE status!='done'").fetchone()[0],
+                    "overdue_tasks": con.execute("SELECT count(*) FROM tasks WHERE status!='done' AND due_date!='' AND due_date<?", (today_local().isoformat(),)).fetchone()[0],
+                    "due_soon": con.execute("SELECT count(*) FROM tasks WHERE status!='done' AND due_date>=? AND due_date<=?", (today_local().isoformat(), (today_local()+timedelta(days=7)).isoformat())).fetchone()[0],
+                    "upcoming_events": con.execute("SELECT count(*) FROM events WHERE day>=?", (today_local().isoformat(),)).fetchone()[0],
+                    "pending_approvals": con.execute("SELECT count(*) FROM pending_actions WHERE status='pending' AND expires_at>?", (now(),)).fetchone()[0],
+                },
                 "workspace": self.workspace_id,
                 "projects": self._rows(con, "SELECT * FROM projects ORDER BY id DESC LIMIT 100"),
                 "tasks": self._rows(con, "SELECT * FROM tasks ORDER BY CASE status WHEN 'done' THEN 1 ELSE 0 END, CASE WHEN due_date='' THEN 1 ELSE 0 END, due_date ASC, id DESC LIMIT 250"),
@@ -208,7 +217,7 @@ class Store:
         pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         with self._conn() as con:
             return {
-                "facts": self._rows(con, "SELECT * FROM memories WHERE key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT 50", (pattern, pattern)),
+                "facts": self._rows(con, "SELECT m.*, p.source, p.created_at, p.approved_at, p.approval_id FROM memories m LEFT JOIN memory_metadata p ON m.key=p.key WHERE m.key LIKE ? ESCAPE '\\' OR m.value LIKE ? ESCAPE '\\' ORDER BY m.updated_at DESC LIMIT 50", (pattern, pattern)),
                 "projects": self._rows(con, "SELECT * FROM projects WHERE title LIKE ? ESCAPE '\\' OR goal LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 50", (pattern, pattern)),
                 "history": self._rows(con, "SELECT * FROM messages WHERE content LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 50", (pattern,)),
                 "notes": self._rows(con, "SELECT * FROM notes WHERE title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 50", (pattern, pattern)),
@@ -219,3 +228,11 @@ class Store:
         self.require("propose")
         with self._conn() as con:
             con.execute("INSERT INTO audit(at,event,detail) VALUES(?,?,?)", (now(), event, detail))
+
+    def approval_status(self, action_id: str) -> str:
+        self.require("read")
+        with self._conn() as con:
+            row = con.execute("SELECT status FROM pending_actions WHERE id=?", (action_id,)).fetchone()
+            if row is None:
+                raise ValueError("Action not found")
+            return row["status"]

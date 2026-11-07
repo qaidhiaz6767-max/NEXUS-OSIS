@@ -15,13 +15,23 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def today_local() -> date:
-    """Use the OSIS operating timezone for briefings, independent of CI/server TZ."""
+def configured_timezone() -> str:
+    """One validated timezone for API metadata, briefings and browser dates."""
+    requested = os.getenv("NEXUS_TIMEZONE", "Asia/Jakarta")
     try:
-        return datetime.now(ZoneInfo(os.getenv("NEXUS_TIMEZONE", "Asia/Jakarta"))).date()
-    except ZoneInfoNotFoundError:
-        # If a platform lacks zoneinfo data, retain functional offline commands.
-        return date.today()
+        ZoneInfo(requested)
+        return requested
+    except (ZoneInfoNotFoundError, ValueError):
+        try:
+            ZoneInfo("Asia/Jakarta")
+            return "Asia/Jakarta"
+        except ZoneInfoNotFoundError:
+            return "UTC"
+
+
+def today_local() -> date:
+    zone = configured_timezone()
+    return datetime.now(timezone.utc if zone == "UTC" else ZoneInfo(zone)).date()
 
 
 def clean_text(value, label: str, max_length: int = 240, required: bool = True) -> str:

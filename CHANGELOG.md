@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4 — NEXUS Command Center (Mission 002)
+
+- Rebuilt the shared shell, command home, stateful AI presence and responsive operational pages.
+- Split the browser into dependency-free state/API/domain/UI/views/forms/voice modules.
+- Added safe structured chat text, copy, exact action previews and actual decision outcomes.
+- Added project/task filters and details, typed proposal forms, readable memory search/provenance, Activity and Settings.
+- Added mobile navigation, explicit modal/drawer focus loops, reduced motion and accurate loading/error states.
+- Corrected unverified AI connection labeling, configured-timezone display and limited-row metric counts.
+- Retained SQLite compatibility and approval/workspace controls with no schema migration.
+- Added domain/API/browser regressions, synthetic screenshot capture and Mission 002 documentation.
+
 ## v0.3 — Universal NEXUS Core (Mission 001)
 
 - Extracted reusable Core modules and kept the OSIS import/schema compatibility facade.
