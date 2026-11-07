@@ -19,3 +19,5 @@ nexus-*-backup.json
 .env.*
 !.env.example
 .DS_Store
+*.nxbak
+*.nexus-lock

@@ -1,0 +1,2 @@
+# Optional, used only for administrative encrypted backup/recovery.
+cryptography>=43,<51

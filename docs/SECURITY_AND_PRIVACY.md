@@ -1,6 +1,66 @@
 # NEXUS — Security, privacy, and school-use rules
 
-NEXUS v0.3 is a personal localhost prototype. The phrase "local-first" does not guarantee security, encryption, or privacy when optional cloud features are enabled. Treat this guide as mandatory before adding integrations or real school data.
+NEXUS v0.5 is a trusted single-user localhost prototype. The phrase "local-first"
+does not guarantee security, encryption, or privacy when optional cloud features
+are enabled. Live records are plaintext. The optional backup CLI encrypts its
+archives only. Treat this guide as mandatory before adding integrations or real
+school data.
+
+## Mission 003 security review
+
+Implemented and exercised with synthetic data:
+
+- Static HTML can include exact hash-authorized script/style blocks for the
+  single-file UI. There is no unsafe-inline/eval permission. CSP hashes come
+  only from the trusted static response, never runtime user/model records.
+  Event-handler attributes and unlisted script injection remain blocked in
+  Chromium tests. This protects the served document, not a compromised local
+  account that can edit its trusted HTML source.
+
+- All tools bind to the server-selected Store. Retrieved text, model arguments
+  and conversation cannot grant capabilities, change file paths or approve work.
+  Read tools reject unknown arguments, including attempts to choose a workspace.
+- The closed typed write registry normalizes/revalidates arguments. Every local
+  mutation requires a one-hour single-use approval, with referenced-record
+  fingerprints, database constraints and complete transaction rollback on failure.
+  Independent attempts cannot replay an approved token or duplicate a converted
+  meeting follow-up. Legacy proposal compatibility lacks historic fingerprints.
+- Decision drafts cannot be treated as approved decisions; confirmation targets
+  must already exist before proposal. A generated future ID cannot turn an
+  unreviewed new draft into an official decision in the same batch.
+- Provider output is bounded and fails closed for malformed/truncated responses,
+  invalid tools and duplicates. Transport timeout is bounded; SDK retries are off.
+  Error logs retain categories, not provider messages, commands or credentials.
+  Unexpected HTTP read/write failures return sanitized errors.
+- Memory stays separate from chat. Facts carry provenance, approval and validity;
+  stale facts are excluded from active context. Conflicting updates require new
+  review. Credential-name checks are a heuristic, not general secret/PII detection.
+- Schema 2 is additive and transactional, preserves IDs/columns and rejects
+  foreign-workspace/future-version databases. Relationship/cycle checks do not
+  trust model-generated labels or invented completion timestamps.
+- SQLite-supported backups use authenticated encryption, private file modes and
+  output outside Git. Restore checks authenticity/integrity/schema/workspace,
+  requires explicit confirmation and an exclusive cooperative runtime lease,
+  retains an encrypted rollback copy and invalidates unfinished approval tokens.
+  See [DATA_SAFETY.md](DATA_SAFETY.md) for exact cryptographic and storage limits.
+- No external account connectors, outbound sending, background jobs, specialist
+  execution, audio upload, shell tools or arbitrary network tools were enabled.
+
+Residual risks: no authentication/session security, per-user authorization,
+encrypted live SQLite, secure erase, complete retention controls, malware
+protection or independently audited cryptography. The local operator and their
+processes remain trusted. Prompt-injection text can still influence proposed
+content; closed tools and approvals restrict effects, not all hallucinations.
+Audit/proposals/chat may contain sensitive input and survive memory deletion.
+Backup header metadata is visible; temporary recovery plaintext is not securely
+erased. Restore leases do not constrain non-cooperating database clients. The
+optional cryptography package adds a maintained third-party dependency; no
+comprehensive dependency vulnerability audit or production penetration test was
+performed. Mac microphone, live provider and remote deployment are unverified.
+
+Before handling restricted records, add an actual permission/retention policy,
+host/disk protection and appropriate authentication. Do not expose this server
+to LAN/internet or treat workspace separation as an OS-level security sandbox.
 
 ## 1. Data categories
 

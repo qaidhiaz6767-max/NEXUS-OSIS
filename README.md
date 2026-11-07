@@ -4,9 +4,30 @@ NEXUS is a local-first personal AI operating system and executive assistant.
 OSIS is the first operational workspace; the same Core also provides independent
 containers for Personal, Academic, Research, Development, Finance and ATLAS.
 
-**v0.4 Command Center prototype:** Python-first, one trusted local operator, no required cloud
-service. OpenClaw, external integrations and autonomous specialist agents are
-future extensions.
+**v0.5 cognitive Core / Mission 003:** Python-first, one trusted local operator,
+no required cloud service. Persistent command lifecycle, approved executive
+workflows and encrypted administrative backups extend the v0.4 dashboard.
+External accounts, scheduling and specialist execution remain disabled.
+
+## Mission 003 — backend for Project JARVIS
+
+- Grounded English/Indonesian/mixed command routing, bounded context and replaceable model provider.
+- Persistent command/plan states, verified results, conflict checks and atomic approvals.
+- Explicit project → milestone → task relationships, dependencies and completion timestamps.
+- Structured meetings, separately approved decisions and confirmed follow-up tasks.
+- Categorized memory with provenance, duplicate/conflict warnings and stale-information handling.
+- Real local briefings and tested encrypted SQLite backup/restoration through a private CLI.
+
+The frontend is being developed independently by Claude. **This mission changes
+no frontend files.** New records can be accessed through additive APIs; existing
+UI panels still expose the Mission 002 subset. No deployment or MacBook upgrade
+is performed automatically.
+
+[Development report](docs/MISSION_003_REPORT.md) ·
+[Claude API contract](docs/API_CONTRACT.md) ·
+[Frontend integration guide](docs/FRONTEND_INTEGRATION_GUIDE.md) ·
+[Cognitive architecture and memory](docs/COGNITIVE_CORE.md) ·
+[Private backup/recovery](docs/DATA_SAFETY.md)
 
 ## Mission 002 — Command Center redesign
 
@@ -44,10 +65,10 @@ The existing OSIS path (`data/nexus.sqlite3`, `NEXUS_DB` or `--db`) is retained.
 Other workspace databases live under `data/workspaces/` by default.
 `Control+C` stops the server. Use `--port 8766` if necessary.
 
-**Existing installation:** stop the old app and privately copy your entire SQLite
-database before upgrading. This release adds tables transactionally without
-changing existing table columns or IDs. Test against a copy first. See the
-[architecture and compatibility notes](docs/NEXUS_CORE_ARCHITECTURE.md).
+**Existing installation:** stop the old app and keep a private full SQLite
+snapshot before upgrading. Schema 2 adds tables transactionally without changing
+existing table columns or IDs. Test against a copy first. See the
+[migration notes](docs/DATABASE_MIGRATIONS.md) and [backup CLI](docs/DATA_SAFETY.md).
 Never upload your database or exports to GitHub.
 
 ## Implemented now
@@ -57,20 +78,21 @@ Never upload your database or exports to GitHub.
 - Navy responsive dashboard: overview, assignments, projects, calendar, notes,
   memory, assistant and approvals; safe per-request workspace selection.
 - Existing OSIS task/delegation/status, event, note and briefing commands.
-- Basic projects: create, list and search (title, goal, status, timestamp).
-- Structured facts: approved create/update/delete, provenance, creation/approval
-  timestamps and source (`command`, `ai`, `legacy`).
+- Projects, milestones, linked tasks, acyclic prerequisites and structured meeting records.
+- Structured facts: approved create/update/delete, categories, provenance,
+  timestamps, optional validity date and exact duplicate/conflict diagnostics.
 - Literal search of facts, projects, notes and persisted conversation history.
 - Central command/model planner with a fixed tool registry, visible plan reports
   and atomic plans of 1–5 local writes behind one explicit approval.
 - Expiring one-time approval tokens, transaction rollback and local audit.
-- Full business-record JSON exports; calendar `.ics` export remains manual.
+- Business-record JSON exports and private encrypted full SQLite recovery CLI;
+  calendar `.ics` export remains manual.
 - Optional cloud AI only with explicit opt-in; offline commands always available.
 - Existing browser dictation/TTS controls; external dictation requires confirmation.
 - Standard-library unit/HTTP tests, optional browser smoke, and CI configuration.
 
 No unrestricted shell/file tools, automatic sending, payment, trading, cloud sync,
-agent swarm, authentication or encrypted storage are implemented. Other workspaces
+agent swarm, authentication or encrypted live database are implemented. Other workspaces
 are functional generic containers, without specialist domain applications.
 
 ## Commands
@@ -91,6 +113,10 @@ are functional generic containers, without specialist domain applications.
 /search roadmap
 /forget Meeting rhythm
 /audit
+NEXUS, status report.
+NEXUS, apa aja yang belum selesai dari proker OSIS?
+NEXUS, what were our previous decisions?
+NEXUS, what did we finish this week?
 ```
 
 Every business-record change is proposed first. Review its full details in Approval
@@ -106,8 +132,10 @@ In the assistant, use Shift+Enter for a multistep plan:
 /remember Research preference | Local-first
 ```
 
-All steps commit together after approval or roll back together on failure. Plans
-cannot reference newly generated task IDs or include external actions.
+All steps commit together after approval or roll back together on failure. General
+plans cannot reference newly generated task IDs or include external actions.
+The typed `create_project_plan` proposal additionally creates one linked project
+with up to five milestones and twenty tasks using explicit array positions.
 
 Terminal-only mode:
 
@@ -145,6 +173,8 @@ node --check web/app.js
 ```
 
 The regression suite uses temporary invented records and loopback HTTP only.
+Install `requirements-security.txt` before running the full suite, which includes
+real authenticated-encryption recovery tests. The ordinary app does not require it.
 Run `node --test tests/frontend.test.mjs` for the dependency-free browser domain tests.
 For the optional UI smoke check, install Playwright in a development environment
 with Chromium at `/usr/bin/chromium`, then run `python3 tests/browser_smoke.py`.
@@ -158,8 +188,9 @@ screenshots. See the testing guide for prerequisites and limits.
 [Security](docs/SECURITY_AND_PRIVACY.md) ·
 [Testing](docs/TESTING_AND_RELEASES.md)
 
-Older roadmap documents describe long-term goals; the Mission 001 architecture
-and report identify exactly what this iteration ships. This remains a localhost
+Older roadmap documents describe long-term goals; the Mission 003 report
+identifies exactly what this iteration ships. This remains a localhost
 prototype, not a production school or company system. Local account security is
 the trust boundary. JSON export excludes history/proposals and has no restore UI;
-use a private full SQLite copy for recovery.
+use the private encrypted SQLite CLI for full recovery. Live model calls, Mac
+audio and third-party account integrations were not verified or enabled.

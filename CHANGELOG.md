@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.5 — Project JARVIS cognitive Core (Mission 003)
+
+- Integrated the pasted single-file frontend CSP compatibility change while retaining Mission 003 APIs and recovery locks. Exact trusted inline script/style hashes are allowed; handlers, eval and unlisted scripts remain blocked. Added HTTP and Chromium coverage without changing frontend files.
+
+- Added persistent command/plan lifecycle, verified transaction results and proposal-time record conflict checks.
+- Hardened the replaceable Responses API provider boundary, malformed/truncated tool handling, bounded context and zero automatic retries.
+- Added common bilingual intent routing, verified task references and closed read-only tool schemas.
+- Added safe schema 2 sidecars for project/milestone/task relationships, dependencies, completion timestamps and structured meetings.
+- Added separate decision approval and confirmed meeting follow-up conversion without invented attendance or notifications.
+- Added categorized memory, duplicate/conflict diagnostics, validity dates and deterministic relevant context.
+- Added grounded local briefings with real sources, deadline risks and timezone-correct completion periods.
+- Added authenticated encrypted SQLite snapshots, preview/confirmation, restore leases, encrypted rollback and approval invalidation.
+- Added workspace-bound resource APIs and command submission alias, retaining existing frontend fields/routes and all web files.
+- Added API/Claude handoff, architecture, migration, security and recovery documentation; expanded synthetic automated tests.
+- Prepared inactive scheduler/specialist/speech adapter interfaces; no account connections, background execution or paid API tests.
+
 ## v0.4 — NEXUS Command Center (Mission 002)
 
 - Rebuilt the shared shell, command home, stateful AI presence and responsive operational pages.

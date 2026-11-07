@@ -1,5 +1,9 @@
 # NEXUS Core — Mission 001 architecture
 
+Historical Mission 001 baseline. Mission 003 adds schema 2 and the working
+[cognitive Core](COGNITIVE_CORE.md), [API contract](API_CONTRACT.md) and
+[data safety](DATA_SAFETY.md). Those documents describe current behavior.
+
 Status: implemented first iteration, v0.3 prototype. Mission 002 adds the [v0.4 interface system](UI_DESIGN_SYSTEM.md) and additive API metadata/proposal contracts without a schema migration. NEXUS is a universal personal
 AI operating system foundation; OSIS is its first operational workspace.
 
