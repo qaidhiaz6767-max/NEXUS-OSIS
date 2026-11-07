@@ -4360,10 +4360,11 @@ function readLedger(){
   }catch{ledgerReadError=true;return [];}
 }
 function renderLedger(){
+  $('ledger-review').disabled=!ledgerCanWrite();for(const field of $('ledger-form').querySelectorAll('input,select'))field.disabled=!ledgerCanWrite();
   const entries=readLedger();let income=0,expense=0;for(const entry of entries){if(entry.type==='income')income+=entry.amount;else expense+=entry.amount;}
   $('ledger-balance').textContent=ledgerReadError?'Unavailable':idr.format(income-expense);$('ledger-in').textContent=ledgerReadError?'—':idr.format(income);$('ledger-out').textContent=ledgerReadError?'—':idr.format(expense);
   const list=$('ledger-entries');list.replaceChildren();
-  for(const entry of entries.slice(-5).reverse()){const row=el('div','ledger-entry '+entry.type);row.append(el('span','',entry.note),el('strong','',(entry.type==='income'?'+':'−')+idr.format(entry.amount)));const remove=button('×',()=>prepareLedgerRemoval(entry.id),'');remove.setAttribute('aria-label','Review removal of '+entry.note);remove.disabled=!LEDGER_WRITES_ALLOWED;row.append(remove);list.append(row);}
+  for(const entry of entries.slice(-5).reverse()){const row=el('div','ledger-entry '+entry.type);row.append(el('span','',entry.note),el('strong','',(entry.type==='income'?'+':'−')+idr.format(entry.amount)));const remove=button('×',()=>prepareLedgerRemoval(entry.id),'');remove.setAttribute('aria-label','Review removal of '+entry.note);remove.disabled=!ledgerCanWrite();row.append(remove);list.append(row);}
   if(!entries.length)list.append(el('p','',ledgerReadError?'Browser ledger is unreadable. Existing storage has not been overwritten.':'No entries saved in this browser.'));
 }
 // The globe is a decorative geographic visualization, never a connection monitor.
@@ -4423,15 +4424,16 @@ function setupHud(){
 
 // Browser-local ledger entries require manual review; Core approvals stay server-side.
 const LEDGER_WRITES_ALLOWED=true;
+function ledgerCanWrite(){return LEDGER_WRITES_ALLOWED&&app.loaded&&Boolean(app.workspace);}
 let ledgerDraft=null;
 function prepareLedgerEntry(entry){
-  if(!LEDGER_WRITES_ALLOWED){toast('Ledger changes are not enabled in this preview. Nothing was saved.','error');return false;}
+  if(!ledgerCanWrite()){toast('Load an available workspace before changing its browser ledger. Nothing was saved.','error');return false;}
   const note=String(entry.note).trim();if(!note||note.length>120)throw new Error('Enter a description of 1–120 characters.');if(!['income','expense'].includes(entry.type))throw new Error('Choose income or expense.');
   ledgerDraft={operation:'add',workspace:app.workspace,entry:{type:entry.type,amount:parseRupiah(String(entry.amount)),note}};
   renderLocalLedgerApprovals();navigate('approvals');return true;
 }
 function prepareLedgerRemoval(id){
-  if(!LEDGER_WRITES_ALLOWED){toast('Browser-local ledger changes are currently read-only.','error');return;}
+  if(!ledgerCanWrite()){toast('Load an available workspace before changing its browser ledger.','error');return;}
   ledgerDraft={operation:'remove',workspace:app.workspace,id};renderLocalLedgerApprovals();navigate('approvals');
 }
 function renderLocalLedgerApprovals(){
@@ -4440,7 +4442,7 @@ function renderLocalLedgerApprovals(){
   if(draft.entry)root.append(el('p','',draft.entry.type+' · '+idr.format(draft.entry.amount)+' · '+draft.entry.note));
   const cancel=button('Reject local change',()=>{ledgerDraft=null;renderLocalLedgerApprovals();},'button secondary');
   const approve=button('Approve browser-only change',()=>{
-    if(!LEDGER_WRITES_ALLOWED||draft!==ledgerDraft||draft.workspace!==app.workspace)return;
+    if(!ledgerCanWrite()||draft!==ledgerDraft||draft.workspace!==app.workspace)return;
     const entries=readLedger();if(ledgerReadError){toast('The existing browser ledger is unreadable; nothing was overwritten.','error');return;}let next;
     if(draft.operation==='add'){
       if(entries.length>=1000){toast('This browser ledger has reached its 1,000-entry limit.','error');return;}
@@ -4536,8 +4538,8 @@ function setupVoice(onState){
   window.addEventListener('pagehide',stopAudio);syncRing();
 }
 function setupLedger(){
-  $('ledger-review').disabled=!LEDGER_WRITES_ALLOWED;
-  for(const field of $('ledger-form').querySelectorAll('input,select'))field.disabled=!LEDGER_WRITES_ALLOWED;
+  $('ledger-review').disabled=!ledgerCanWrite();
+  for(const field of $('ledger-form').querySelectorAll('input,select'))field.disabled=!ledgerCanWrite();
   if(!LEDGER_WRITES_ALLOWED){$('ledger-notice').textContent='Only in this browser, separated by workspace. Read-only in this preview.';$('ledger-review').textContent='Read-only preview';}
   $('ledger-form').addEventListener('submit',event=>{event.preventDefault();try{prepareLedgerEntry({type:$('ledger-type').value,amount:parseRupiah($('ledger-amount').value),note:$('ledger-note').value});}catch(error){toast(error.message,'error');}});
 }
