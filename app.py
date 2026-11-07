@@ -7,15 +7,20 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import sys
 import threading
 import tempfile
+import time
 import webbrowser
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
+from urllib.request import Request, HTTPRedirectHandler, build_opener
 
 from core import Coordinator, Store, HELP
 from nexus.validation import configured_timezone
@@ -33,6 +38,125 @@ STATIC = {
 }
 for module in ("state", "api", "domain", "ui", "views", "forms", "voice"):
     STATIC[f"/{module}.js"] = (f"web/{module}.js", "text/javascript; charset=utf-8")
+
+
+WORLD_SOURCES = {
+    "coingecko": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true",
+    "exchange": "https://open.er-api.com/v6/latest/USD",
+    "bbc": "https://feeds.bbci.co.uk/news/world/rss.xml",
+}
+WORLD_LIMIT = 300_000
+
+
+class _FeedRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        allowed_hosts = {urlsplit(url).netloc for url in WORLD_SOURCES.values()}
+        target = urlsplit(newurl)
+        if target.scheme != "https" or target.netloc not in allowed_hosts:
+            raise ValueError("Feed redirect is outside the approved sources")
+        return super().redirect_request(request, fp, code, message, headers, newurl)
+
+
+def fetch_url(url: str) -> bytes:
+    """Fixed public feeds only; never a URL supplied by the browser or AI."""
+    if url not in WORLD_SOURCES.values():
+        raise ValueError("Unknown public feed")
+    request = Request(url, headers={"User-Agent": "NEXUS-Local/0.5 public-feed-reader"})
+    with build_opener(_FeedRedirect()).open(request, timeout=6) as response:
+        data = response.read(WORLD_LIMIT + 1)
+    if len(data) > WORLD_LIMIT:
+        raise ValueError("Public feed exceeds the 300 KB limit")
+    return data
+
+
+def _feed_number(value, *, positive=False):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("Invalid feed number")
+    if not math.isfinite(value) or (positive and value <= 0):
+        raise ValueError("Invalid feed number")
+    return value
+
+
+def _parse_world_source(source: str, raw: bytes):
+    if len(raw) > WORLD_LIMIT:
+        raise ValueError("Oversized feed")
+    if source == "bbc":
+        if b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
+            raise ValueError("Feed document declarations are not supported")
+        root = ET.fromstring(raw)
+        titles = [
+            " ".join("".join(node.itertext()).split())[:300]
+            for node in root.findall(".//item/title")
+        ]
+        titles = [title for title in titles if title][:6]
+        if not titles:
+            raise ValueError("No RSS headlines found")
+        return titles
+    data = json.loads(raw)
+    if source == "exchange":
+        if data.get("result") != "success" or data.get("base_code") != "USD":
+            raise ValueError("Unexpected exchange-rate response")
+        return {
+            "usd_idr": _feed_number(data["rates"]["IDR"], positive=True),
+            "source_updated_at": (
+                data.get("time_last_update_utc")
+                if isinstance(data.get("time_last_update_utc"), str)
+                else None
+            ),
+        }
+    return {
+        coin: {
+            "usd": _feed_number(data[coin]["usd"], positive=True),
+            "change_24h": _feed_number(data[coin]["usd_24h_change"]),
+        }
+        for coin in ("bitcoin", "ethereum")
+    }
+
+
+def fetch_world() -> dict:
+    """Independent failures; missing data stays null, never sample numbers."""
+    result = {
+        "prices": None,
+        "exchange": None,
+        "headlines": [],
+        "errors": [],
+        "sources": {},
+    }
+    checked = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    fields = {"coingecko": "prices", "exchange": "exchange", "bbc": "headlines"}
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {
+            source: executor.submit(fetch_url, url)
+            for source, url in WORLD_SOURCES.items()
+        }
+        for source, future in futures.items():
+            try:
+                result[fields[source]] = _parse_world_source(source, future.result())
+                result["sources"][source] = {
+                    "status": "available",
+                    "checked_at": checked,
+                }
+            except Exception as exc:
+                result["sources"][source] = {
+                    "status": "unavailable",
+                    "checked_at": checked,
+                }
+                result["errors"].append(
+                    {
+                        "source": source,
+                        "message": "Source unavailable",
+                        "code": type(exc).__name__,
+                    }
+                )
+    available = sum(
+        item["status"] == "available" for item in result["sources"].values()
+    )
+    result.update(
+        status="LIVE" if available == 3 else "PARTIAL" if available else "OFFLINE",
+        fetched_at=checked,
+        cache_seconds=300 if available else 30,
+    )
+    return result
 
 
 def ics_escape(value: str) -> str:
@@ -83,6 +207,17 @@ def handler_factory(
 ):
     provider_observations = {}
     observations_lock = threading.Lock()
+    world_cache = {"data": None, "until": 0.0}
+    world_lock = threading.Lock()
+
+    def cached_world():
+        with world_lock:
+            if world_cache["data"] is None or time.monotonic() >= world_cache["until"]:
+                payload = fetch_world()
+                world_cache.update(
+                    data=payload, until=time.monotonic() + payload["cache_seconds"]
+                )
+            return world_cache["data"]
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "NEXUS/0.5"
@@ -165,6 +300,10 @@ def handler_factory(
                 return
             except ValueError as exc:
                 self.json_response({"error": str(exc)}, code=400)
+                return
+            if route == "/api/world":
+                store.require("read")
+                self.json_response(cached_world())
                 return
             try:
                 extended = get_data(
