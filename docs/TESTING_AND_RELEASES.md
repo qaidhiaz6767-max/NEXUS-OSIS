@@ -1,4 +1,4 @@
-# Tests and release evidence — Mission 001
+# Tests and release evidence — Missions 001–002
 
 ## Runtime and checks
 
@@ -61,3 +61,21 @@ Before external adapters: add authorization/scope, redacted audit, timeout,
 idempotency, recipient/content previews and verified-delivery tests. Before any
 remote deployment: real authentication and a fresh threat model are required.
 Do not change the loopback binding as a substitute for those controls.
+
+## Mission 002 interface verification
+
+- `node --test tests/frontend.test.mjs`: timezone date boundaries, deterministic
+  priorities, combined task filters, expiry and completed/missing-deadline labels.
+- `python3 tests/browser_redesign.py`: full operational/approval journeys,
+  persistence, literal text and rich formatting, clipboard, stale-state recovery,
+  read-only/isolation/replay/expiry, keyboard focus, shortcuts and simulated speech.
+- `NEXUS_SCREENSHOT_DIR=work/screenshots python3 tests/capture_ui.py`: 13 sample-data
+  desktop/mobile captures using real local API records.
+- Browser reflow checks cover all views at 320px and 390px, plus laptop/desktop.
+- `tests/test_interface.py` verifies additive routes, configured-versus-observed AI
+  status, non-secret metadata, full-table counts, provenance, local assets,
+  timezone fallback and selected text/control contrast ratios.
+
+Playwright and system Chromium remain development-only prerequisites. Real model
+calls, Mac/Safari, screen readers and microphone/speaker hardware were not verified.
+See [Mission 002 evidence and limits](MISSION_002_REPORT.md).

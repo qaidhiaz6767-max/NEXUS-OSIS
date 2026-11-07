@@ -66,6 +66,6 @@ class WorkspaceHTTPTests(unittest.TestCase):
         _,body=self.request('/')
         for marker in (b'workspace-select',b'view-projects',b'memory-search-form',b'plan-report'):
             self.assertIn(marker,body)
-        _,body=self.request('/app.js')
-        self.assertIn(b'encodeURIComponent(app.workspace)',body)
+        _,body=self.request('/api.js')
+        self.assertIn(b'encodeURIComponent(workspace)',body)
         self.assertNotIn(b'innerHTML',body)

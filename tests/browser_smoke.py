@@ -38,9 +38,9 @@ with tempfile.TemporaryDirectory() as tmp:
             page.locator('#field-title').fill('Personal research')
             page.locator('#field-goal').fill('Evaluate local AI tools')
             page.locator('#create-form button[type=submit]').click()
-            page.wait_for_selector('.approval-yes')
+            page.wait_for_selector('#view-approvals .approval-yes')
             assert registry.store('personal').state()['projects']==[]
-            page.locator('.approval-yes').click()
+            page.locator('#view-approvals .approval-yes').click()
             page.wait_for_function("() => document.getElementById('nav-pending-count').textContent==='0'")
             assert registry.store('personal').state()['projects'][0]['title']=='Personal research'
             assert len(store.state()['projects'])==1

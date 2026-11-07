@@ -1,55 +1,168 @@
-"use strict";
-// NEXUS OSIS 0.2 — zero-dependency local dashboard. Never insert saved data as HTML.
-const $ = id => document.getElementById(id);
-const all = selector => Array.from(document.querySelectorAll(selector));
-const app = { workspace: new URLSearchParams(location.search).get("workspace") || "", state: {tasks: [], events: [], notes: [], memories: [], pending: [], audit: [], messages: [], mode: ""}, view: "overview", busy: false, listening: false, recognizer: null, toastTimer: null, modal: null };
-const VIEW_NAMES = {projects:"Projects",overview:"Overview",tasks:"Assignments",events:"Events & calendar",notes:"Meeting notes",memory:"Institutional memory",assistant:"Chief of Staff",approvals:"Approval inbox"};
-const CREATE_NAMES = {project:"New project",task:"New assignment",event:"Plan an event",note:"New meeting note",memory:"Save a memory",assign:"Change assignment owner"};
-const TODAY = () => new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Jakarta",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-const el = (tag, classname, content) => {const node=document.createElement(tag);if(classname)node.className=classname;if(content!==undefined)node.textContent=String(content);return node;};
-function clear(node){node.replaceChildren();}
-function stamp(date){if(!date)return "No due date";const d=new Date(date+"T12:00:00");return Number.isNaN(d.getTime())?date:new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"short",year:"numeric"}).format(d);}
-function monthDay(date){const d=new Date(date+"T12:00:00");return {day:String(d.getDate()),month:new Intl.DateTimeFormat("en-US",{month:"short"}).format(d).toUpperCase()};}
-function showToast(message){const toast=$("toast");toast.textContent=message;toast.classList.add("show");clearTimeout(app.toastTimer);app.toastTimer=setTimeout(()=>toast.classList.remove("show"),4000);}
-async function api(path,options={}){const scoped=path+(path.includes("?")?"&":"?")+"workspace="+encodeURIComponent(app.workspace);const result=await fetch(app.workspace?scoped:path,{cache:"no-store",...options});let data;try{data=await result.json();}catch{throw new Error("Could not read server response");}if(!result.ok)throw new Error(data.error||"Local server request failed");return data;}
-function post(path,data){return api(path,{method:"POST",headers:{"Content-Type":"application/json","X-NEXUS-Local":"1"},body:JSON.stringify(data)});}
-function navigate(view){if(!VIEW_NAMES[view])return;app.view=view;for(const section of all(".view"))section.classList.toggle("active",section.id==="view-"+view);for(const button of all(".nav-item")){const active=button.dataset.view===view;button.classList.toggle("active",active);if(active)button.setAttribute("aria-current","page");else button.removeAttribute("aria-current");}$("breadcrumb-page").textContent=VIEW_NAMES[view];if(view==="assistant"){$("chat-messages").scrollTop=$("chat-messages").scrollHeight;}window.scrollTo({top:0,behavior:"instant"});}
-function makeEmpty(title,body,actionText,action){const wrap=el("div","full-empty");wrap.append(el("span","empty-glyph","◌"),el("strong","",title),el("p","",body));if(actionText){const b=el("button","button button-dark",actionText);b.type="button";b.onclick=action;wrap.append(b);}return wrap;}
-function compactEmpty(text){return el("div","empty-state",text);}
-function dateChip(date){const parts=monthDay(date),wrap=el("div","event-date");wrap.append(el("strong","",parts.day),el("span","",parts.month));return wrap;}
-function prioritySort(a,b){const p={high:0,medium:1,low:2};return (p[a.priority]??3)-(p[b.priority]??3)||(a.due_date||"9999").localeCompare(b.due_date||"9999");}
-function dueText(task){const date=task.due_date;if(!date)return "No date";if(date<TODAY()&&task.status!=="done")return "Overdue · "+stamp(date);if(date===TODAY())return "Due today";return stamp(date);}
-function updateMetrics(){const state=app.state,active=state.tasks.filter(t=>t.status!=="done"),today=TODAY(),week=new Date(today+"T12:00:00");week.setDate(week.getDate()+7);const future=week.getFullYear()+"-"+String(week.getMonth()+1).padStart(2,"0")+"-"+String(week.getDate()).padStart(2,"0");const upcoming=state.events.filter(e=>e.day>=today);$("metric-open").textContent=active.length;$("metric-due").textContent=active.filter(t=>t.due_date&&t.due_date>=today&&t.due_date<=future).length;$("metric-events").textContent=upcoming.length;$("metric-pending").textContent=state.pending.length;$("nav-task-count").textContent=active.length;$("nav-pending-count").textContent=state.pending.length;$("mode-label").textContent=state.mode?.includes("AI +")?"AI connected · local workspace":"Local command mode";$("assistant-mode").textContent=state.mode||"Offline command mode";}
-function renderOverview(){const tasks=$("overview-tasks");clear(tasks);const active=app.state.tasks.filter(t=>t.status!=="done").sort(prioritySort).slice(0,5);if(!active.length){const box=el("div","empty-state");box.append(el("strong","","A clear desk."),el("p","","No open assignments yet."));const button=el("button","button button-outline","Create first assignment");button.onclick=()=>openModal("task");box.append(button);tasks.append(box);}else for(const t of active){const row=el("div","priority-row"),dot=el("span","priority-dot "+t.priority),info=el("div");info.append(el("strong","",t.title),el("small","",t.owner+" · "+(t.status==="doing"?"In progress":"To do")));const due=el("span","due-badge"+(t.due_date&&t.due_date<TODAY()?" overdue":""),dueText(t));row.append(dot,info,due);tasks.append(row);}
- const events=$("overview-events");clear(events);const next=app.state.events.filter(e=>e.day>=TODAY()).slice(0,4);if(!next.length){events.append(compactEmpty("No events on the calendar yet."));}else for(const item of next){const row=el("div","event-row"),copy=el("div","event-copy");copy.append(el("strong","",item.title),el("small","",(item.time||"Time TBD")+" · "+(item.location||"Location TBD")));row.append(dateChip(item.day),copy);events.append(row);}
- const approvals=$("overview-approvals");clear(approvals);if(!app.state.pending.length)approvals.append(compactEmpty("You're all caught up."));else for(const action of app.state.pending.slice(0,3)){const p=el("div","approval-line");p.append(el("span","","◎"),el("strong","",action.description));approvals.append(p);}
+import {app,VIEW_NAMES} from './state.js';
+import {api,post} from './api.js';
+import {$,all,hydrateIcons,toast,announce} from './ui.js';
+import {bindActions,currentWorkspace,renderAll,renderChat,renderApprovals,renderTasks,renderProjects,renderMemory} from './views.js';
+import {openForm,formAction} from './forms.js';
+import {setupVoice,syncVoiceControls,speak,stopAudio} from './voice.js';
+
+let drawerReturn=null;
+let expiryTimer=null;
+function setDrawer(open){
+  if(open)drawerReturn=document.activeElement;
+  $('sidebar').classList.toggle('open',open);$('nav-backdrop').hidden=!open;$('open-nav').setAttribute('aria-expanded',String(open));
+  document.body.classList.toggle('drawer-lock',open);
+  const mobile=matchMedia('(max-width:760px)').matches;
+  $('sidebar').inert=mobile&&!open;
+  $('main').inert=mobile&&open;$('view-overview').closest('.workspace').querySelector('.topbar').inert=mobile&&open;
+  if(open)$('close-nav').focus();else if(drawerReturn?.isConnected)drawerReturn.focus();
 }
-function renderTasks(){const body=$("task-table-body"),empty=$("tasks-empty");clear(body);const needle=$("task-search").value.trim().toLowerCase();const status=$("task-filter").value;const rows=app.state.tasks.filter(t=>(status==="all"||t.status===status)&&(t.title.toLowerCase().includes(needle)||t.owner.toLowerCase().includes(needle)||String(t.id).includes(needle)));$("task-result-count").textContent=rows.length+(rows.length===1?" assignment":" assignments");empty.hidden=rows.length!==0;if(!rows.length){empty.textContent=app.state.tasks.length?"No assignments match the current filter.":"No assignments yet. Use “New assignment” to create your first one.";}
- for(const t of rows){const tr=el("tr"),title=el("td"),name=el("span","task-title",t.title);title.append(name,el("span","task-id","#"+t.id));const owner=el("td","muted-cell",t.owner);const due=el("td","muted-cell",dueText(t));const p=el("td"),pTag=el("span","pill "+t.priority,t.priority.charAt(0).toUpperCase()+t.priority.slice(1));p.append(pTag);const statusCell=el("td"),statusTag=el("span","pill "+t.status,({todo:"To do",doing:"In progress",done:"Completed"})[t.status]||t.status);statusCell.append(statusTag);const actions=el("td"),wrap=el("div","row-actions");const assign=el("button","tiny-action","Assign");assign.type="button";assign.setAttribute("aria-label","Change owner of task "+t.id);assign.onclick=()=>openModal("assign",t);wrap.append(assign);if(t.status!=="done"){const nextStatus=t.status==="todo"?"doing":"done";const b=el("button","tiny-action",t.status==="todo"?"Start":"Complete");b.type="button";b.onclick=()=>sendCommand("/task "+nextStatus+" "+t.id,{showView:"approvals"});wrap.append(b);}else{const reopen=el("button","tiny-action","Reopen");reopen.type="button";reopen.onclick=()=>sendCommand("/task todo "+t.id,{showView:"approvals"});wrap.append(reopen);}actions.append(wrap);tr.append(title,owner,due,p,statusCell,actions);body.append(tr);}}
-function renderEvents(){const panel=$("event-list");clear(panel);if(!app.state.events.length){panel.append(makeEmpty("Nothing scheduled yet","Add upcoming assemblies, meetings or event preparations.","Plan an event",()=>openModal("event")));return;}const today=TODAY();for(const e of [...app.state.events].sort((a,b)=>a.day.localeCompare(b.day))){const card=el("article","event-card"),head=el("div","event-card-head"),info=el("div");info.append(el("span","event-status",e.day<today?"PAST EVENT":"UPCOMING"),el("h2","event-card-title",e.title),el("div","event-meta",(e.time||"Time TBD")+" · "+(e.location||"Location TBD")));head.append(dateChip(e.day),info);card.append(head);if(e.details)card.append(el("p","event-detail",e.details));panel.append(card);}}
-function renderNotes(){const panel=$("notes-list");clear(panel);if(!app.state.notes.length){panel.append(makeEmpty("Capture what matters","Meeting minutes, follow-up decisions, and important notes can live here.","Add a meeting note",()=>openModal("note")));return;}for(const note of app.state.notes){const card=el("article","record-card"),head=el("div","record-top");head.append(el("span","section-kicker","MEETING NOTE"),el("span","record-date",stamp(note.created_at.slice(0,10))));card.append(head,el("h3","",note.title),el("p","",note.body));panel.append(card);}}
-function renderMemory(){const panel=$("memory-list");clear(panel);if(!app.state.memories.length){panel.append(makeEmpty("Build your workspace memory","Store approved, non-sensitive details so important context is not lost.","Save a memory",()=>openModal("memory")));return;}for(const memory of app.state.memories){const card=el("article","record-card"),head=el("div","record-top");head.append(el("span","section-kicker","APPROVED FACT · "+(memory.source||"legacy").toUpperCase()),el("span","record-date",stamp(memory.updated_at.slice(0,10))));card.append(head,el("h3","",memory.key),el("p","",memory.value));const actions=el("div","record-actions"),edit=el("button","tiny-action","Update"),remove=el("button","tiny-action","Delete");edit.type=remove.type="button";edit.onclick=()=>{openModal("memory");$("field-key").value=memory.key;$("field-value").value=memory.value;};remove.onclick=()=>sendCommand("/forget "+memory.key,{showView:"approvals"});actions.append(edit,remove);card.append(actions);panel.append(card);}}
-function renderApprovals(){const panel=$("approvals-list");clear(panel);if(!app.state.pending.length){panel.append(makeEmpty("Nothing waiting for approval","Every proposed change will appear here for your decision.","Create an assignment",()=>openModal("task")));return;}for(const item of app.state.pending){const card=el("article","approval-card"),detail=el("div");detail.append(el("span","approval-type","PENDING · "+item.name.replaceAll("_"," ").toUpperCase()),el("strong","",item.description),el("small","","Expires after one hour if not reviewed"));const controls=el("div","approval-controls"),reject=el("button","approval-no","Reject"),approve=el("button","approval-yes","Approve");reject.type="button";approve.type="button";reject.onclick=()=>decide(item.id,false,[reject,approve]);approve.onclick=()=>decide(item.id,true,[reject,approve]);controls.append(reject,approve);const full=el("details"),summary=el("summary","","Review full details");let payload;try{payload=JSON.stringify(JSON.parse(item.args_json),null,2);}catch{payload=item.args_json;}full.append(summary,el("pre","approval-details",payload));detail.append(full);card.append(detail,controls);panel.append(card);}}
-function renderChat(){const messages=$("chat-messages");clear(messages);if(!app.state.messages.length){const intro=el("div","chat-item assistant"),avatar=el("div","chat-avatar","N"),content=el("div","chat-content");content.append(el("div","chat-by","NEXUS"),el("p","","Welcome to your NEXUS workspace. I can help organize tasks, events, decisions and notes. Use /brief to begin. Natural-language conversation needs an optional AI connection."));intro.append(avatar,content);messages.append(intro);}else for(const m of app.state.messages){const row=el("div","chat-item "+m.role),avatar=el("div","chat-avatar",m.role==="user"?"YOU":"N"),body=el("div","chat-content");body.append(el("div","chat-by",m.role==="user"?"YOU":"NEXUS"),el("p","",m.content));row.append(avatar,body);messages.append(row);}
- const pending=$("chat-approval-notice");clear(pending);if(app.state.pending.length){const bar=el("div","inline-approval");bar.append(el("span","",`${app.state.pending.length} action${app.state.pending.length===1?"":"s"} awaiting approval`));const button=el("button","","Review now ↗");button.onclick=()=>navigate("approvals");bar.append(button);pending.append(bar);}messages.scrollTop=messages.scrollHeight;}
-function renderProjects(){const panel=$("project-list");clear(panel);for(const project of app.state.projects||[]){const card=el("article","record-card");card.append(el("span","section-kicker",project.status),el("h3","",project.title),el("p","",project.goal));panel.append(card);}if(!panel.children.length)panel.append(makeEmpty("No projects yet","Keep a goal and a clear record of your work.","New project",()=>openModal("project")));}
-function render(){renderProjects();updateMetrics();renderOverview();renderTasks();renderEvents();renderNotes();renderMemory();renderApprovals();renderChat();}
-async function refresh(){try{app.state=await api("/api/state");app.workspace=app.state.workspace;$("workspace-label").textContent=app.workspace.toUpperCase()+" · WORKSPACE";for(const a of all('a[href^="/api/"]')){const u=new URL(a.href);u.searchParams.set("workspace",app.workspace);a.href=u.pathname+u.search;}render();}catch(err){showToast("Could not reach NEXUS: "+err.message);}}
-async function sendCommand(command,options={}){if(app.busy)return false;const input=String(command||"").trim();if(!input)return false;let succeeded=false;app.busy=true;$("send-button").disabled=true;try{const result=await post("/api/chat",{message:input});succeeded=true;$("plan-report").textContent=result.plan?"Plan · "+result.plan.workspace+" · "+result.plan.status.replaceAll("_"," ")+" · "+result.plan.steps.map(s=>s.tool).join(", "):"";await refresh();if(result.pending){showToast("Change proposed. Please review it.");navigate(options.showView||"approvals");}else if(options.showView){navigate(options.showView);}else{navigate("assistant");if($("speak-toggle").checked)speak(result.message);}}catch(err){showToast("Could not send command: "+err.message);}finally{app.busy=false;$("send-button").disabled=false;}return succeeded;}
-async function decide(id,approve,buttons){buttons.forEach(b=>b.disabled=true);try{const response=await post("/api/decide",{id,approve});showToast(response.message);$("plan-report").textContent=response.message;await refresh();}catch(err){showToast("Could not decide: "+err.message);buttons.forEach(b=>b.disabled=false);await refresh();}}
-const FIELD_SETS={
- project:[{name:"title",label:"Project title",required:true},{name:"goal",label:"Goal",required:true,type:"textarea"}],
- task:[{name:"title",label:"Task title",required:true,placeholder:"Prepare next OSIS meeting agenda"},{name:"owner",label:"Person responsible",placeholder:"Selma / OSIS Secretary"},{name:"due",label:"Deadline",type:"date"},{name:"priority",label:"Priority",type:"select",choices:[["medium","Medium"],["high","High"],["low","Low"]]}],
- event:[{name:"title",label:"Event title",required:true,placeholder:"OSIS committee meeting"},{name:"day",label:"Date",required:true,type:"date"},{name:"time",label:"Time",type:"time"},{name:"location",label:"Location",placeholder:"Auditorium"},{name:"details",label:"Preparation notes",type:"textarea",placeholder:"What needs to be discussed?"}],
- note:[{name:"title",label:"Meeting or note title",required:true,placeholder:"Weekly OSIS meeting"},{name:"body",label:"Meeting notes",required:true,type:"textarea",placeholder:"Decisions, follow-ups and next steps…"}],
- memory:[{name:"key",label:"Reference name",required:true,placeholder:"Current committee meeting day"},{name:"value",label:"Information",required:true,type:"textarea",placeholder:"The agreed meeting day is…"}],
- assign:[{name:"owner",label:"New responsible person",required:true,placeholder:"OSIS Secretary"}]
-};
-function openModal(type,task){if(!FIELD_SETS[type])return;app.modal={type,task:task||null};$("modal-title").textContent=CREATE_NAMES[type];$("modal-kicker").textContent=app.workspace.toUpperCase()+" / "+(type==="assign"?"DELEGATION":"NEW RECORD");const wrap=$("modal-fields");clear(wrap);for(const f of FIELD_SETS[type]){const block=el("div","form-field"),label=el("label","",f.label+(f.required?" *":""));label.htmlFor="field-"+f.name;let field;if(f.type==="textarea")field=el("textarea");else if(f.type==="select"){field=el("select");for(const [value,title] of f.choices){const option=el("option","",title);option.value=value;field.append(option);}}else{field=el("input");field.type=f.type||"text";}field.name=f.name;field.id="field-"+f.name;field.required=!!f.required;if(f.placeholder)field.placeholder=f.placeholder;if(f.name==="owner"&&type==="assign"&&task)field.value=task.owner;block.append(label,field);wrap.append(block);}$("create-modal").showModal();const first=wrap.querySelector("input,select,textarea");if(first)first.focus();}
-function modalCommand(){const type=app.modal?.type;if(!type)return null;const values=Object.fromEntries(new FormData($("create-form")).entries());for(const v of Object.values(values))if(String(v).includes("|")){showToast("Remove the | character from fields and try again.");return null;}switch(type){case"project":return "/project add "+[values.title,values.goal].join(" | ");case"task":return "/task add "+[values.title,values.owner||"Unassigned",values.due||"",values.priority||"medium"].join(" | ");case"event":return "/event add "+[values.title,values.day,values.time||"",values.location||"",values.details||""].join(" | ");case"note":return "/note add "+[values.title,values.body].join(" | ");case"memory":return "/remember "+[values.key,values.value].join(" | ");case"assign":return "/task assign "+[app.modal.task.id,values.owner].join(" | ");default:return null;}}
-function speak(text){if(!("speechSynthesis"in window))return;window.speechSynthesis.cancel();const msg=new SpeechSynthesisUtterance(String(text).slice(0,900));msg.lang=$("voice-language").value;msg.rate=1.02;window.speechSynthesis.speak(msg);}
-function setUpVoice(){const Recognizer=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognizer){$("mic-button").title="Browser speech recognition unavailable. Try macOS Dictation.";$("mic-button").onclick=()=>showToast("Voice transcription isn't supported in this browser. Use macOS Dictation to type your command.");return;}app.recognizer=new Recognizer();app.recognizer.interimResults=false;app.recognizer.continuous=false;app.recognizer.onresult=ev=>{$("chat-input").value+=(($("chat-input").value)?" ":"")+Array.from(ev.results).map(r=>r[0].transcript).join(" ");$("chat-notice").textContent="Transcribed. Review your text before sending.";};app.recognizer.onend=()=>{app.listening=false;$("mic-button").classList.remove("listening");};app.recognizer.onerror=ev=>showToast("Voice recognition: "+ev.error);$("mic-button").onclick=()=>{if(app.listening){app.recognizer.stop();return;}if(!window.confirm("Browser dictation may send audio to an external speech service. Continue?"))return;try{app.recognizer.lang=$("voice-language").value;app.recognizer.start();app.listening=true;$("mic-button").classList.add("listening");$("chat-notice").textContent="Listening. Browser recognition may use an external service; avoid private student data.";}catch(err){showToast(err.message);}};}
-function setup(){app.view="overview";$("today-label").textContent=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Jakarta",weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date()).toUpperCase();document.addEventListener("click",ev=>{const button=ev.target.closest("[data-view],[data-create],[data-command]");if(!button)return;if(button.dataset.view){navigate(button.dataset.view);}else if(button.dataset.create){openModal(button.dataset.create);}else if(button.dataset.command){sendCommand(button.dataset.command,{showView:"assistant"});}});$("task-search").addEventListener("input",renderTasks);$("task-filter").addEventListener("change",renderTasks);$("refresh-button").onclick=()=>refresh();$("daily-brief-button").onclick=()=>sendCommand("/brief",{showView:"assistant"});$("send-button").onclick=()=>{const message=$("chat-input").value.trim();if(message&&!app.busy){sendCommand(message,{showView:"assistant"}).then(ok=>{if(ok)$("chat-input").value="";});}};$("chat-input").addEventListener("keydown",ev=>{if(ev.key==="Enter"&&!ev.shiftKey&&!ev.isComposing){ev.preventDefault();$("send-button").click();}});document.addEventListener("keydown",ev=>{if((ev.metaKey||ev.ctrlKey)&&ev.key.toLowerCase()==="k"){ev.preventDefault();navigate("assistant");$("chat-input").focus();}});$("modal-close").onclick=()=>$("create-modal").close();$("modal-cancel").onclick=()=>$("create-modal").close();$("create-form").addEventListener("submit",ev=>{ev.preventDefault();const command=modalCommand();if(!command)return;$("create-modal").close();sendCommand(command,{showView:"approvals"});});$("memory-search-form").onsubmit=async ev=>{ev.preventDefault();try{const result=await api("/api/search?q="+encodeURIComponent($("memory-search").value));$("memory-results").textContent=JSON.stringify(result,null,2);}catch(err){showToast(err.message);}};
-setUpVoice();loadWorkspaces();}
-async function loadWorkspaces(){await refresh();try{const result=await api("/api/workspaces");const select=$("workspace-select");for(const w of result.workspaces){const option=el("option","",w.label+" · "+w.domain);option.value=w.id;select.append(option);}select.value=app.workspace;select.disabled=false;select.onchange=()=>{location.search="?workspace="+encodeURIComponent(select.value);};}catch(err){showToast(err.message);}}
+function navigate(view,{focus=true}={}){
+  if(!VIEW_NAMES[view])view='overview';
+  app.view=view;
+  for(const section of all('main>.view')){const active=section.id==='view-'+view;section.hidden=!active;section.classList.toggle('active',active);}
+  for(const node of all('.nav-item')){const active=node.dataset.view===view;node.classList.toggle('active',active);if(active)node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');}
+  $('breadcrumb-page').textContent=VIEW_NAMES[view].toUpperCase();document.title='NEXUS — '+VIEW_NAMES[view];
+  history.replaceState(null,'','#'+view);
+  if($('sidebar').classList.contains('open'))setDrawer(false);
+  if(view==='assistant'){$('chat-messages').scrollTop=$('chat-messages').scrollHeight;}
+  window.scrollTo({top:0,behavior:'instant'});
+  if(focus){$('main').focus({preventScroll:true});announce(VIEW_NAMES[view]+' · '+currentWorkspace().label);}
+}
+function syncStatus(){
+  const state=app.busy?'Processing':app.audioState==='listening'?'Listening':app.audioState==='speaking'?'Speaking':app.assistantState;
+  $('assistant-state').textContent=state;$('assistant-state').dataset.state=app.error?'error':app.busy?'processing':'ready';
+  $('core-state').textContent=app.loaded?state==='Ready'?'Ready for your next move':state:'Connecting to local core';
+  $('ai-presence').dataset.state=app.busy?'processing':app.audioState!=='idle'?app.audioState:app.error?'error':'idle';
+  $('main').setAttribute('aria-busy',String(app.busy||!app.loaded));
+  $('workspace-select').disabled=app.busy||!app.loaded;
+  for(const node of all('.command-submit,#send-button,[data-create],#review-change'))node.disabled=app.busy||app.stale||!app.loaded||!(app.data.capabilities||[]).includes('propose');
+  for(const node of all('#home-input,#chat-input'))node.disabled=!app.loaded||!(app.data.capabilities||[]).includes('propose');
+  for(const node of all('.approval-controls button'))node.disabled=app.busy||app.stale||!(app.data.capabilities||[]).includes('approve');
+  for(const node of all('[data-capability]'))node.disabled=app.busy||app.stale||!app.loaded||!(app.data.capabilities||[]).includes(node.dataset.capability);
+  syncVoiceControls();
+}
+async function refresh({notify=false}={}){
+  const workspace=app.workspace;
+  try{
+    const data=await api('/api/state',{workspace});
+    if(workspace&&workspace!==app.workspace)return false;
+    app.data=data;app.workspace=data.workspace;app.loaded=true;app.stale=false;$('load-error').hidden=true;
+    if(app.error){app.error=false;app.assistantState='Ready';}
+    renderAll();syncStatus();scheduleExpiryRefresh();if(notify)toast('Workspace refreshed.');return true;
+  }catch(error){
+    $('load-error-message').textContent=error.message+(app.loaded?' Showing the last loaded records.':'');$('load-error').hidden=false;
+    app.error=true;app.stale=true;app.assistantState='Error';$('local-status').textContent='Local core unavailable';$('local-status').dataset.state='error';syncStatus();
+    // Fail closed while the currently displayed state may be stale.
+    for(const node of all('[data-create],.command-submit,#send-button,#review-change,.approval-controls button'))node.disabled=true;
+    return false;
+  }
+}
+function resultState(result){
+  app.error=result.status==='error'||['error','unavailable'].includes(result.provider_status);
+  app.assistantState=app.error?'Error':result.pending?'Awaiting approval':'Ready';
+}
+async function command(message){
+  if(app.busy||app.stale||!app.loaded||!message.trim())return false;
+  app.busy=true;app.error=false;syncStatus();navigate('assistant',{focus:false});renderChat();
+  let ok=false;
+  try{
+    const result=await post('/api/chat',{message});resultState(result);
+    $('plan-report').textContent=result.pending?'Proposal prepared. No records have changed. Review the action card below.':app.error?result.message:'Response ready · saved in '+currentWorkspace().label+'.';
+    $('plan-report').hidden=false;
+    ok=await refresh();if(ok){resultState(result);renderChat();if(!result.pending&&!app.error)speak(result.message);announce(result.pending?'Approval required.':result.message.slice(0,180));}
+  }catch(error){app.error=true;app.assistantState='Error';toast(error.message,'error');$('plan-report').hidden=false;$('plan-report').textContent=error.message;}
+  finally{app.busy=false;renderChat();syncStatus();}
+  return ok;
+}
+async function propose(name,args,{fromForm=false,workspace=app.workspace}={}){
+  if(app.busy||app.stale||!app.loaded||workspace!==app.workspace)return false;
+  app.busy=true;app.error=false;syncStatus();
+  try{
+    const result=await post('/api/propose',{name,args},workspace);
+    if(fromForm)$('create-modal').close();
+    app.assistantState='Awaiting approval';$('plan-report').textContent='Proposal prepared. Review the exact values before approving.';$('plan-report').hidden=false;
+    const loaded=await refresh();app.assistantState=loaded?'Awaiting approval':'Error';navigate('approvals');toast('Approval required. No records have changed.');return true;
+  }catch(error){app.error=true;app.assistantState='Error';if(fromForm){$('form-error').textContent=error.message;$('form-error').hidden=false;}else toast(error.message,'error');return false;}
+  finally{app.busy=false;syncStatus();renderApprovals();}
+}
+async function decide(id,approve,workspace){
+  if(app.busy||app.stale||workspace!==app.workspace)return;
+  app.busy=true;app.error=false;syncStatus();
+  try{
+    const result=await post('/api/decide',{id,approve},workspace);
+    $('plan-report').textContent=result.message;$('plan-report').hidden=false;
+    const loaded=await refresh();
+    app.assistantState=!loaded?'Error':result.outcome==='approved'?'Tool operation completed':result.outcome==='expired'?'Approval expired':'Action rejected';
+    toast(result.message,result.outcome==='expired'?'error':'info');announce(result.message);
+  }catch(error){app.error=true;app.assistantState='Error';toast(error.message,'error');$('plan-report').hidden=false;$('plan-report').textContent=error.message;await refresh();app.error=true;app.assistantState='Error';}
+  finally{app.busy=false;renderApprovals();renderChat();syncStatus();}
+}
+async function copy(text){try{await navigator.clipboard.writeText(text);toast('Message copied.');}catch{toast('Clipboard access is unavailable. Select and copy the message text.','error');}}
+async function searchMemory(event){
+  event.preventDefault();const query=$('memory-search').value.trim();if(!query){app.memoryResults=null;renderMemory();return;}
+  const workspace=app.workspace,button=$('memory-search-form').querySelector('[type=submit]');button.disabled=true;
+  try{const results=await api('/api/search?q='+encodeURIComponent(query),{workspace});if(workspace!==app.workspace)return;app.memoryResults=results;renderMemory();announce('Workspace search results updated.');}catch(error){toast(error.message,'error');}finally{button.disabled=false;}
+}
+async function load(){
+  const loaded=await refresh();if(!loaded)return;
+  try{
+    const result=await api('/api/workspaces');app.workspaces=result.workspaces;
+    const select=$('workspace-select');select.replaceChildren();
+    for(const workspace of result.workspaces){const option=document.createElement('option');option.value=workspace.id;option.textContent=workspace.label+(workspace.id==='atlas'?' · foundation':'');select.append(option);}
+    select.value=app.workspace;renderAll();syncStatus();
+  }catch(error){toast('Could not load workspace options. '+error.message,'error');}
+}
+function setup(){
+  hydrateIcons();setupVoice(syncStatus);bindActions({create:openForm,command,propose,decide,navigate,copy});
+  document.addEventListener('click',event=>{
+    const control=event.target.closest('[data-view],[data-create],[data-command],[data-priorities]');if(!control||control.disabled||control.getAttribute('aria-disabled')==='true')return;
+    if(control.dataset.view)navigate(control.dataset.view);
+    else if(control.dataset.create)openForm(control.dataset.create);
+    else if(control.dataset.command)command(control.dataset.command);
+    else if(control.hasAttribute('data-priorities')){navigate('overview');$('priorities-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'center'});$('priorities-panel').focus({preventScroll:true});}
+  });
+  for(const [form,input] of [['home-command-form','home-input'],['chat-form','chat-input']]){
+    $(form).onsubmit=async event=>{event.preventDefault();const value=$(input).value;if(await command(value))$(input).value='';};
+    $(input).onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$(form).requestSubmit();}};
+  }
+  for(const id of ['task-search','task-filter','task-priority','task-sort'])$(id).addEventListener(id==='task-search'?'input':'change',renderTasks);
+  for(const id of ['project-search','project-filter','project-sort'])$(id).addEventListener(id==='project-search'?'input':'change',renderProjects);
+  $('memory-search-form').onsubmit=searchMemory;$('memory-source').onchange=renderMemory;
+  $('clear-memory-search').onclick=()=>{app.memoryResults=null;$('memory-search').value='';$('memory-source').value='all';renderMemory();};
+  $('workspace-select').onchange=()=>{if(app.busy){$('workspace-select').value=app.workspace;return;}stopAudio();const selected=$('workspace-select').value;location.href=location.pathname+'?workspace='+encodeURIComponent(selected)+'#'+app.view;};
+  $('refresh-button').onclick=$('settings-refresh').onclick=()=>refresh({notify:true});$('retry-load').onclick=load;
+  $('create-form').onsubmit=async event=>{event.preventDefault();if(app.busy)return;try{const action=formAction();await propose(action.name,action.args,{fromForm:true,workspace:action.workspace});}catch(error){$('form-error').textContent=error.message;$('form-error').hidden=false;}};
+  $('modal-close').onclick=$('modal-cancel').onclick=()=>$('create-modal').close();
+  $('detail-close').onclick=$('detail-done').onclick=()=>$('detail-modal').close();
+  for(const dialog of all('dialog')){
+    dialog.addEventListener('close',()=>{if(app.focusReturn?.isConnected)app.focusReturn.focus({preventScroll:true});});
+    dialog.addEventListener('keydown',event=>{
+      if(event.key!=='Tab')return;
+      const nodes=[...dialog.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),a[href],summary')].filter(node=>node.getClientRects().length);
+      const first=nodes[0],last=nodes.at(-1);
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+    });
+  }
+  $('open-nav').onclick=()=>setDrawer(true);$('close-nav').onclick=$('nav-backdrop').onclick=()=>setDrawer(false);
+  const media=matchMedia('(max-width:760px)');media.addEventListener('change',()=>setDrawer(false));$('sidebar').inert=media.matches;
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&$('sidebar').classList.contains('open')){event.preventDefault();setDrawer(false);return;}
+    if(event.key==='Tab'&&$('sidebar').classList.contains('open')){const nodes=[...$('sidebar').querySelectorAll('a,button:not([disabled]),select:not([disabled])')].filter(n=>n.getClientRects().length);const first=nodes[0],last=nodes.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}return;}
+    if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){
+      const editing=event.target.closest('input,textarea,select,[contenteditable=true]');if(editing||document.querySelector('dialog[open]'))return;
+      event.preventDefault();navigate('assistant');$('chat-input').focus();
+    }
+  });
+  window.addEventListener('hashchange',()=>navigate(location.hash.slice(1)||'overview'));
+  navigate(location.hash.slice(1)||'overview',{focus:false});syncStatus();load();
+  // Expiry-driven local refresh, not routine polling.
+}
+function scheduleExpiryRefresh(){
+  clearTimeout(expiryTimer);
+  const future=app.data.pending.map(p=>Date.parse(p.expires_at)).filter(at=>Number.isFinite(at)&&at>Date.now());
+  if(!future.length)return;
+  expiryTimer=setTimeout(()=>{if(!app.busy)refresh();else scheduleExpiryRefresh();},Math.min(2147483647,Math.max(50,Math.min(...future)-Date.now()+50)));
+}
+
 setup();

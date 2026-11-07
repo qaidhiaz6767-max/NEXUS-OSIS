@@ -17,6 +17,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
 from core import Coordinator, Store, HELP
+from nexus.validation import configured_timezone
 from nexus.workspaces import WorkspaceRegistry
 
 ROOT = Path(__file__).resolve().parent
@@ -25,6 +26,8 @@ STATIC = {"/": ("web/index.html", "text/html; charset=utf-8"),
           "/index.html": ("web/index.html", "text/html; charset=utf-8"),
           "/style.css": ("web/style.css", "text/css; charset=utf-8"),
           "/app.js": ("web/app.js", "text/javascript; charset=utf-8")}
+for module in ("state", "api", "domain", "ui", "views", "forms", "voice"):
+    STATIC[f"/{module}.js"] = (f"web/{module}.js", "text/javascript; charset=utf-8")
 
 
 def ics_escape(value: str) -> str:
@@ -49,9 +52,11 @@ def make_ics(events: list[dict], workspace_id="osis") -> bytes:
 
 
 def handler_factory(base_store: Store, port: int, *, registry=None, allow_ai=False, demo=False):
+    provider_observations = {}
+    observations_lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "NEXUS/0.3"
+        server_version = "NEXUS/0.4"
 
         def log_message(self, format, *args):
             # Avoid logging sensitive commands or meeting-note content.
@@ -129,6 +134,16 @@ def handler_factory(base_store: Store, port: int, *, registry=None, allow_ai=Fal
                 return
             if route == "/api/state":
                 state = store.state()
+                state["timezone"] = configured_timezone()
+                state["demo"] = demo
+                state["capabilities"] = sorted(store.capabilities)
+                configured = bool(allow_ai and "ai" in store.capabilities and os.environ.get("OPENAI_API_KEY"))
+                with observations_lock:
+                    observation = dict(provider_observations.get(store.workspace_id, {}))
+                state["system"] = {"version": "0.4 development", "local": "online",
+                                   "ai": observation.get("status", "configured") if configured else "disabled",
+                                   "ai_checked_at": observation.get("at"),
+                                   "model": os.getenv("NEXUS_MODEL", "gpt-4.1-mini") if configured else None}
                 state["mode"] = "Demo · temporary sample records" if demo else "AI + local commands" if allow_ai and "ai" in store.capabilities and os.environ.get("OPENAI_API_KEY") else "Private offline commands"
                 self.json_response(state)
                 return
@@ -174,6 +189,14 @@ def handler_factory(base_store: Store, port: int, *, registry=None, allow_ai=Fal
                     raise ValueError("Expected a JSON object.")
                 if route == "/api/chat":
                     result = coordinator.chat(data.get("message", ""))
+                    if result.get("provider_status") in {"verified", "error", "unavailable"}:
+                        with observations_lock:
+                            provider_observations[store.workspace_id] = {
+                                "status": "verified" if result["provider_status"] == "verified" else "error",
+                                "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+                elif route == "/api/propose":
+                    item = store.propose(data.get("name"), data.get("args"))
+                    result = coordinator.report({"message": "Proposal prepared. Review the exact values before approving.", "pending": item})
                 elif route == "/api/decide":
                     action_id = data.get("id")
                     if not isinstance(action_id, str) or len(action_id) > 128:
@@ -184,7 +207,7 @@ def handler_factory(base_store: Store, port: int, *, registry=None, allow_ai=Fal
                     result_text = store.decide(action_id, approve)
                     if "propose" in store.capabilities:
                         store.record("assistant", result_text)
-                    result = {"message": result_text}
+                    result = {"message": result_text, "outcome": store.approval_status(action_id), "workspace": store.workspace_id}
                 else:
                     self.json_response({"error": "Not found"}, code=404)
                     return
@@ -202,7 +225,7 @@ def handler_factory(base_store: Store, port: int, *, registry=None, allow_ai=Fal
 
 def cli(store: Store, *, allow_ai=False):
     assistant = Coordinator(store, allow_ai=allow_ai)
-    print("\nNEXUS Core v0.3 — private local command center")
+    print("\nNEXUS Core v0.4 — private local command center")
     print("Type /help for commands. Type /quit to exit. Approval is required for every change.\n")
     while True:
         try:
@@ -280,7 +303,7 @@ def run(args):
     except OSError as exc:
         sys.exit(f"Could not start NEXUS on port {args.port}: {exc}. Try --port 8766")
     url = f"http://127.0.0.1:{args.port}"
-    print("\nNEXUS Core v0.3")
+    print("\nNEXUS Core v0.4")
     print("Local dashboard:", url)
     print("Local records:", store.path)
     print("Brain mode:", "Optional AI enabled" if args.enable_ai and os.environ.get("OPENAI_API_KEY") else "Offline command mode")
