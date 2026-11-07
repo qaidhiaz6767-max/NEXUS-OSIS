@@ -27,8 +27,8 @@ def snapshot(page,name):
     if shots:page.screenshot(path=str(shots/(name+'.png')),full_page=True,animations='disabled')
 
 def nav(page,view):
-    if page.viewport_size['width']<=760 and not page.locator('#sidebar').evaluate('(el)=>el.classList.contains("open")'):
-        page.locator('#open-nav').click()
+    if not page.locator('#sidebar').evaluate('(el)=>el.classList.contains("open")'):
+        page.locator('#profile-button').click()
     page.locator(f'.nav-item[data-view="{view}"]').click()
     expect(page.locator('#view-'+view)).to_be_visible()
 
@@ -55,13 +55,13 @@ with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'NEXUS_TIMEZONE
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         with sync_playwright() as p:
-            browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+            browser=p.chromium.launch(executable_path=__import__('os').environ.get('NEXUS_CHROMIUM','/usr/bin/chromium'),headless=True,args=['--no-sandbox'])
             context=browser.new_context(viewport={'width':1440,'height':1000},reduced_motion='reduce',permissions=['clipboard-read','clipboard-write'])
             page=context.new_page();errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
             external=[]
             page.on('request',lambda req:external.append(req.url) if not req.url.startswith(f'http://127.0.0.1:{server.server_port}/') else None)
             started=time.perf_counter();page.goto(f'http://127.0.0.1:{server.server_port}')
-            expect(page.locator('#workspace-select')).to_be_enabled()
+            expect(page.locator('#workspace-select')).to_be_enabled();expect(page.locator('body')).to_have_attribute('data-startup','home')
             expect(page.locator('#metric-open')).to_have_text('3')
             expect(page.locator('#mode-label')).to_have_text('AI off · local commands')
             expect(page.locator('#environment-banner')).to_be_visible()
@@ -158,7 +158,7 @@ with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'NEXUS_TIMEZONE
             nav(page,'projects');page.locator('#project-search').fill('Leadership')
             expect(page.locator('#project-list .project-card')).to_have_count(1)
             page.get_by_role('button',name='Open project').click()
-            expect(page.locator('#detail-content')).to_contain_text('not yet supported')
+            expect(page.locator('#detail-content')).to_contain_text('Milestones');expect(page.locator('#detail-content')).to_contain_text('Linked tasks')
             page.locator('#detail-done').click();snapshot(page,'projects-desktop')
             # Upcoming agenda, note semantics, runtime settings and activity.
             nav(page,'events');expect(page.locator('#event-list')).to_contain_text('Time not set');snapshot(page,'calendar-desktop')
@@ -194,20 +194,20 @@ with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'NEXUS_TIMEZONE
             page.unroute('**/api/state*');page.locator('#retry-load').click();expect(page.locator('#load-error')).not_to_be_visible()
             expect(page.locator('#send-button')).to_be_enabled()
             # Workspace navigation reloads all context; no school data is rendered in Personal.
-            page.locator('#workspace-select').select_option('personal');expect(page.locator('#workspace-label')).to_have_text('PERSONAL · PERSONAL')
+            page.locator('#profile-button').click();page.locator('#workspace-select').select_option('personal');expect(page.locator('#workspace-label')).to_have_text('PERSONAL · PERSONAL')
             nav(page,'overview');expect(page.locator('#metric-open')).to_have_text('0');expect(page.locator('#metric-projects')).to_have_text('0')
             assert 'Test task |' not in page.locator('body').inner_text()
             # Read-only workspace has disabled create and submit controls.
-            page.locator('#workspace-select').select_option('atlas');expect(page.locator('#workspace-label')).to_have_text('ATLAS · COMPANY')
+            page.locator('#profile-button').click();page.locator('#workspace-select').select_option('atlas');expect(page.locator('#workspace-label')).to_have_text('ATLAS · COMPANY')
             nav(page,'projects');expect(page.get_by_role('button',name='New project',exact=False).first).to_be_disabled();expect(page.locator('#project-list button')).to_be_disabled()
             nav(page,'assistant');expect(page.locator('#send-button')).to_be_disabled()
             # Mobile drawer, focus trap, every page's viewport width and reduced motion.
-            page.locator('#workspace-select').select_option('osis');expect(page.locator('#workspace-label')).to_have_text('OSIS · SCHOOL')
+            page.locator('#profile-button').click();page.locator('#workspace-select').select_option('osis');expect(page.locator('#workspace-label')).to_have_text('OSIS · SCHOOL')
             page.set_viewport_size({'width':390,'height':844})
-            page.locator('#open-nav').click();expect(page.locator('#open-nav')).to_have_attribute('aria-expanded','true')
+            page.locator('#profile-button').click();expect(page.locator('#profile-button')).to_have_attribute('aria-expanded','true')
             for _ in range(18):
                 page.keyboard.press('Tab');assert page.evaluate("document.activeElement.closest('#sidebar')!==null")
-            page.keyboard.press('Escape');expect(page.locator('#open-nav')).to_be_focused()
+            page.keyboard.press('Escape');expect(page.locator('#profile-button')).to_be_focused()
             for view in ('overview','assistant','projects','tasks','events','notes','memory','approvals','activity','settings'):
                 nav(page,view)
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),view

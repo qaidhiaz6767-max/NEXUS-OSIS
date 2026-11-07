@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory() as directory:
     try:
         with patch("app.ROOT", root), sync_playwright() as playwright:
             browser = playwright.chromium.launch(
-                executable_path="/usr/bin/chromium",
+                executable_path=__import__("os").environ.get("NEXUS_CHROMIUM","/usr/bin/chromium"),
                 headless=True,
                 args=["--no-sandbox"],
             )

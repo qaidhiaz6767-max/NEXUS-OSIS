@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import html
 import logging
 import importlib.util
 import re
@@ -46,8 +47,14 @@ STATIC = {
     "/style.css": ("web/style.css", "text/css; charset=utf-8"),
     "/app.js": ("web/app.js", "text/javascript; charset=utf-8"),
 }
-for module in ("state", "api", "domain", "ui", "views", "forms", "voice"):
+for module in ("state", "api", "domain", "ui", "views", "forms", "voice", "executive"):
     STATIC[f"/{module}.js"] = (f"web/{module}.js", "text/javascript; charset=utf-8")
+
+# Only these five optional, local photographs can be served. No directory browsing.
+for workspace_id in ("osis", "academic", "coding", "atlas", "finance"):
+    photo = f"web/photos/{workspace_id}.jpg"
+    if (ROOT / photo).is_file():
+        STATIC[f"/photos/{workspace_id}.jpg"] = (photo, "image/jpeg")
 
 
 WORLD_SOURCES = {
@@ -1200,7 +1207,11 @@ def handler_factory(
             route = urlsplit(self.path).path
             if route in STATIC:
                 location, content_type = STATIC[route]
-                self.send_bytes((ROOT / location).read_bytes(), content_type)
+                payload = (ROOT / location).read_bytes()
+                if location == "web/index.html":
+                    # The first greeting uses the actual configured zone, before API readiness.
+                    payload = payload.replace(b"__NEXUS_TIMEZONE__", html.escape(configured_timezone(), quote=True).encode("utf-8"))
+                self.send_bytes(payload, content_type)
                 return
             try:
                 store = self.scoped_store()

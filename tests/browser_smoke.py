@@ -21,19 +21,19 @@ with tempfile.TemporaryDirectory() as tmp:
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         with sync_playwright() as p:
-            browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+            browser=p.chromium.launch(executable_path=__import__('os').environ.get('NEXUS_CHROMIUM','/usr/bin/chromium'),headless=True,args=['--no-sandbox'])
             page=browser.new_page(viewport={'width':1440,'height':1080},device_scale_factor=1)
             errors=[];page.on('pageerror',lambda error: errors.append(str(error)))
             page.goto(f'http://127.0.0.1:{server.server_port}')
-            page.wait_for_selector('#workspace-select:not([disabled])')
+            page.wait_for_selector('#workspace-select:not([disabled])',state='attached');page.wait_for_function("() => document.body.dataset.startup==='home'")
             import os
             if os.environ.get('NEXUS_SCREENSHOT'):
                 page.screenshot(path=os.environ['NEXUS_SCREENSHOT'],full_page=True)
             assert page.locator('#metric-open').inner_text()=='2'
-            page.locator('#workspace-select').select_option('personal')
+            page.locator('#profile-button').click();page.locator('#workspace-select').select_option('personal')
             page.wait_for_function("() => document.getElementById('workspace-label').textContent.startsWith('PERSONAL')")
             assert page.locator('#metric-open').inner_text()=='0'
-            page.get_by_role('button',name='Projects',exact=True).click()
+            page.locator('#profile-button').click();page.locator('.nav-item[data-view=projects]').click()
             page.get_by_role('button',name='New project',exact=False).first.click()
             page.locator('#field-title').fill('Personal research')
             page.locator('#field-goal').fill('Evaluate local AI tools')
@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory() as tmp:
             page.wait_for_function("() => document.getElementById('nav-pending-count').textContent==='0'")
             assert registry.store('personal').state()['projects'][0]['title']=='Personal research'
             assert len(store.state()['projects'])==1
-            page.get_by_role('button',name='Projects',exact=True).click()
+            page.locator('#profile-button').click();page.locator('.nav-item[data-view=projects]').click()
             assert 'Personal research' in page.locator('#project-list').inner_text()
             page.set_viewport_size({'width':390,'height':844})
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
