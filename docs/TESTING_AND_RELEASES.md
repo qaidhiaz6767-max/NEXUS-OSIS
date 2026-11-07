@@ -1,4 +1,8 @@
-# Tests and release evidence — Missions 001–002
+# Tests and release evidence — Missions 001–003
+
+Current Mission 003 results and commands: [MISSION_003_REPORT.md](MISSION_003_REPORT.md).
+Install `requirements-security.txt` to run the encrypted recovery tests. The
+remaining historical test notes describe earlier releases and their results.
 
 ## Runtime and checks
 

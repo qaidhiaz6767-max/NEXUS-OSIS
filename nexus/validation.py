@@ -1,12 +1,29 @@
 """Allowlisted action schemas and bounded input validation."""
+
 from __future__ import annotations
 import json
 import os
 import re
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from .action_schemas import EXECUTIVE_ACTIONS, PROJECT_STATUSES
 
-ACTIONS = frozenset({"create_task", "set_task_status", "assign_task", "create_event", "create_note", "remember", "create_project", "forget", "execute_plan"})
+ACTIONS = (
+    frozenset(
+        {
+            "create_task",
+            "set_task_status",
+            "assign_task",
+            "create_event",
+            "create_note",
+            "remember",
+            "create_project",
+            "forget",
+            "execute_plan",
+        }
+    )
+    | EXECUTIVE_ACTIONS
+)
 STATUSES = frozenset({"todo", "doing", "done"})
 PRIORITIES = frozenset({"low", "medium", "high"})
 
@@ -81,6 +98,10 @@ def pos_int(value, label: str = "ID") -> int:
 def validate_action(name: str, args: dict) -> dict:
     if not isinstance(name, str) or name not in ACTIONS or not isinstance(args, dict):
         raise ValueError("Unsupported action.")
+    if name in EXECUTIVE_ACTIONS:
+        from .action_schemas import validate_executive
+
+        return validate_executive(name, args)
     if name == "execute_plan":
         steps = args.get("steps")
         if not isinstance(steps, list) or not 1 <= len(steps) <= 5:
@@ -95,15 +116,26 @@ def validate_action(name: str, args: dict) -> dict:
                     step_args = json.loads(step["arguments_json"])
                 except json.JSONDecodeError as exc:
                     raise ValueError("Invalid step arguments JSON") from exc
-            normalized.append({"name": step.get("name"),
-                               "args": validate_action(step.get("name"), step_args)})
+            normalized.append(
+                {
+                    "name": step.get("name"),
+                    "args": validate_action(step.get("name"), step_args),
+                }
+            )
         return {"steps": normalized}
     if name == "forget":
         return {"key": clean_text(args.get("key", ""), "Memory key", 100)}
     if name == "create_project":
-        return {"title": clean_text(args.get("title", ""), "Project title"),
-                "goal": clean_text(args.get("goal", ""), "Project goal", 2000),
-                "status": "active"}
+        status = clean_text(args.get("status", "active"), "Project status", 16)
+        if status not in PROJECT_STATUSES:
+            raise ValueError("Invalid project status.")
+        return {
+            "title": clean_text(args.get("title", ""), "Project title"),
+            "goal": clean_text(args.get("goal", ""), "Project goal", 2000),
+            "status": status,
+            "owner": clean_text(args.get("owner", "Unassigned"), "Owner", 100),
+            "target_date": iso_day(args.get("target_date", "")),
+        }
     # Model-supplied extra keys are ignored, never interpreted.
     if name == "create_task":
         priority = clean_text(args.get("priority", "medium"), "Priority", 10).lower()
@@ -114,6 +146,19 @@ def validate_action(name: str, args: dict) -> dict:
             "owner": clean_text(args.get("owner", "Unassigned"), "Owner", 100),
             "due_date": iso_day(args.get("due_date", "")),
             "priority": priority,
+            "description": clean_text(
+                args.get("description", ""), "Description", 2000, False
+            ),
+            "project_id": (
+                None
+                if args.get("project_id") in (None, "")
+                else pos_int(args["project_id"])
+            ),
+            "milestone_id": (
+                None
+                if args.get("milestone_id") in (None, "")
+                else pos_int(args["milestone_id"])
+            ),
         }
     if name == "set_task_status":
         status = clean_text(args.get("status", ""), "Status", 10).lower()
@@ -121,26 +166,81 @@ def validate_action(name: str, args: dict) -> dict:
             raise ValueError("Status must be todo, doing, or done.")
         return {"task_id": pos_int(args.get("task_id"), "Task ID"), "status": status}
     if name == "assign_task":
-        return {"task_id": pos_int(args.get("task_id"), "Task ID"),
-                "owner": clean_text(args.get("owner", ""), "Owner", 100)}
+        return {
+            "task_id": pos_int(args.get("task_id"), "Task ID"),
+            "owner": clean_text(args.get("owner", ""), "Owner", 100),
+        }
     if name == "create_event":
-        return {"title": clean_text(args.get("title", ""), "Event title"),
-                "day": iso_day(args.get("day", ""), required=True),
-                "time": iso_time(args.get("time", "")),
-                "location": clean_text(args.get("location", ""), "Location", 180, required=False),
-                "details": clean_text(args.get("details", ""), "Details", 1500, required=False)}
+        return {
+            "title": clean_text(args.get("title", ""), "Event title"),
+            "day": iso_day(args.get("day", ""), required=True),
+            "time": iso_time(args.get("time", "")),
+            "location": clean_text(
+                args.get("location", ""), "Location", 180, required=False
+            ),
+            "details": clean_text(
+                args.get("details", ""), "Details", 1500, required=False
+            ),
+        }
     if name == "create_note":
-        return {"title": clean_text(args.get("title", ""), "Note title"),
-                "body": clean_text(args.get("body", ""), "Note body", 5000)}
-    return {"key": clean_text(args.get("key", ""), "Memory key", 100),
-            "value": clean_text(args.get("value", ""), "Memory value", 2000)}
+        return {
+            "title": clean_text(args.get("title", ""), "Note title"),
+            "body": clean_text(args.get("body", ""), "Note body", 5000),
+        }
+    if re.search(
+        r"\b(api[\s_-]*key|password|access[\s_-]*token|refresh[\s_-]*token|private[\s_-]*key)\b",
+        args.get("key", "") if isinstance(args.get("key", ""), str) else "",
+        re.I,
+    ):
+        raise ValueError(
+            "Credentials cannot be stored as memory; use trusted local configuration."
+        )
+    categories = {
+        "preference",
+        "workspace",
+        "project_objective",
+        "decision",
+        "meeting_outcome",
+        "operational_fact",
+    }
+    category = clean_text(
+        args.get("category", "operational_fact"), "Memory category", 24
+    )
+    if category not in categories:
+        raise ValueError("Invalid memory category.")
+    return {
+        "key": clean_text(args.get("key", ""), "Memory key", 100),
+        "value": clean_text(args.get("value", ""), "Memory value", 2000),
+        "category": category,
+        "source_ref": clean_text(
+            args.get("source_ref", ""), "Source reference", 240, False
+        ),
+        "valid_until": iso_day(args.get("valid_until", "")),
+    }
 
 
 def action_description(name: str, args: dict) -> str:
+    if name == "create_project_plan":
+        return f"Create project plan: {args['title']} with {len(args['milestones'])} milestones and {len(args['tasks'])} tasks. Review all assignments, dates and dependencies."
+    if name in EXECUTIVE_ACTIONS:
+        return (
+            name.replace("_", " ").capitalize()
+            + ": "
+            + str(
+                args.get("title")
+                or args.get("project_id")
+                or args.get("task_id")
+                or args.get("meeting_id")
+                or args.get("decision_id")
+                or args.get("action_item_id")
+                or args.get("milestone_id")
+            )
+        )
     if name == "execute_plan":
         return "Review entire plan (all steps run together):\n" + "\n".join(
             f"{i}. {action_description(step['name'], step['args'])}"
-            for i, step in enumerate(args["steps"], 1))
+            for i, step in enumerate(args["steps"], 1)
+        )
     if name == "forget":
         return f"Delete saved memory: {args['key']}"
     if name == "create_project":

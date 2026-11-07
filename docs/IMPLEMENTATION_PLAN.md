@@ -1,5 +1,9 @@
 # Mission 001 implementation plan and remaining roadmap
 
+Mission 003's incremental plan and completed milestones are recorded in
+[MISSION_003_REPORT.md](MISSION_003_REPORT.md). The sections below retain the
+Mission 001 implementation history.
+
 ## Completed sequence
 
 1. Audit the existing source and tests; pin upstream commit, preserve imports,
