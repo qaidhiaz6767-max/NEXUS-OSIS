@@ -9,6 +9,18 @@ no required cloud service. Persistent command lifecycle, approved executive
 workflows and encrypted administrative backups extend the v0.4 dashboard.
 External accounts, scheduling and specialist execution remain disabled.
 
+## Executive interface
+
+The executive interface adds a dark navy Home, a liquid-glass orb and a startup
+sequence tied to actual Core readiness. Five portals open distinct six-function
+workspaces; the existing Core, reviewed writes and workspace isolation remain.
+Open **Q** for additional workspaces and the legacy HUD.
+
+[Implementation, capabilities, screenshots and Mac setup](docs/EXECUTIVE_DELIVERY.md) ·
+[Executive design notes](docs/EXECUTIVE_DESIGN.md)
+
+![NEXUS Executive Home with temporary demo records](docs/screenshots/executive/05-home-1440.jpg)
+
 ## Mission 003 — backend for Project JARVIS
 
 - Grounded English/Indonesian/mixed command routing, bounded context and replaceable model provider.
@@ -18,10 +30,10 @@ External accounts, scheduling and specialist execution remain disabled.
 - Categorized memory with provenance, duplicate/conflict warnings and stale-information handling.
 - Real local briefings and tested encrypted SQLite backup/restoration through a private CLI.
 
-The frontend is being developed independently by Claude. **This mission changes
-no frontend files.** New records can be accessed through additive APIs; existing
-UI panels still expose the Mission 002 subset. No deployment or MacBook upgrade
-is performed automatically.
+Mission 003 introduced additive APIs without changing the frontend. The executive
+interface now uses those APIs for meeting records, decision reviews, follow-up
+tasks and project milestones. No deployment or MacBook upgrade is performed
+automatically.
 
 [Development report](docs/MISSION_003_REPORT.md) ·
 [Claude API contract](docs/API_CONTRACT.md) ·

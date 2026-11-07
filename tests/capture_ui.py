@@ -24,17 +24,17 @@ with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'OPENAI_API_KEY
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         with sync_playwright() as p:
-            browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+            browser=p.chromium.launch(executable_path=__import__('os').environ.get('NEXUS_CHROMIUM','/usr/bin/chromium'),headless=True,args=['--no-sandbox'])
             page=browser.new_page(viewport={'width':1440,'height':1000},reduced_motion='reduce')
-            page.goto(f'http://127.0.0.1:{server.server_port}');expect(page.locator('#workspace-select')).to_be_enabled()
+            page.goto(f'http://127.0.0.1:{server.server_port}');expect(page.locator('body')).to_have_attribute('data-startup','home');expect(page.locator('#workspace-select')).to_be_enabled()
             for view in ('overview','assistant','projects','tasks','events','notes','memory','approvals','activity','settings'):
-                page.locator(f'.nav-item[data-view="{view}"]').click()
+                page.locator('#profile-button').click();page.locator(f'.nav-item[data-view="{view}"]').click()
                 expect(page.locator('#view-'+view)).to_be_visible()
                 if view=='assistant':
                     page.locator('#chat-input').fill('/brief');page.locator('#chat-input').press('Enter');expect(page.locator('#send-button')).to_be_enabled();expect(page.locator('#chat-messages')).to_contain_text('OSIS BRIEFING')
                 page.screenshot(path=str(output/(view+'-desktop.png')),full_page=True,animations='disabled')
             for view in ('overview','tasks','assistant'):
-                page.locator(f'.nav-item[data-view="{view}"]').click();page.set_viewport_size({'width':390,'height':844})
+                page.locator('#profile-button').click();page.locator(f'.nav-item[data-view="{view}"]').click();page.set_viewport_size({'width':390,'height':844})
                 page.screenshot(path=str(output/(view+'-mobile.png')),full_page=True,animations='disabled')
                 page.set_viewport_size({'width':1440,'height':1000})
             browser.close()
