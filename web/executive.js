@@ -21,6 +21,18 @@ export function orbState({busy=false,audio='idle',error=false}={}) {
   return error?'error':busy?'thinking':audio==='listening'?'listening':audio==='speaking'?'speaking':'idle';
 }
 export function workspaceById(id){return WORKSPACES.find(w=>w.id===id);}
+// Voice and text navigation is deliberately local: it never invokes AI tools,
+// approves changes, or accepts arbitrary URLs. Only known workspace IDs resolve.
+export function workspaceCommandDestination(input) {
+  const request=String(input||'').trim()
+    .replace(/^(?:(?:hey|hi|halo)\s+)?nexus[,\s:]*/i,'')
+    .replace(/[.!?]+$/,'').trim().toLowerCase();
+  const match=request.match(/^(?:open|show|go to|switch to|take me to|buka|masuk ke|pindah ke|tampilkan)\s+(?:(?:the|my|ke)\s+)?(?:(?:workspace|headquarters|dashboard|ruang kerja)\s+)?(osis|academic|academics|development|coding|atlas|finance|personal|research)(?:\s+(?:workspace|headquarters|dashboard|ruang kerja))?(?:\s+(?:please|tolong))?$/);
+  if(!match)return null;
+  const aliases={academics:'academic',development:'coding'};
+  return aliases[match[1]]||match[1];
+}
+
 export const INTRO_STAGES=['greeting','formation','initializing','ready','home'];
 
 // Cancellation shortens animation only. It cannot skip the readiness promise.
