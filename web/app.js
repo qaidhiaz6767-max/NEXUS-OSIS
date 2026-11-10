@@ -1,4 +1,4 @@
-import {WORKSPACES,PORTAL_PHOTOS,workspaceById,greetingAt,orbState,runIntro,workspaceCommandDestination} from './executive.js';
+import {WORKSPACES,workspaceById,greetingAt,orbState,runIntro,workspaceCommandDestination} from './executive.js';
 
 const app = {
   workspace: new URLSearchParams(location.search).get('workspace') || '',
@@ -482,6 +482,7 @@ async function refresh({notify=false}={}){
 // Navigating never contacts the model or changes Core records. The destination
 // must already be present in the server-provided readable workspace list.
 function openWorkspaceByCommand(destination) {
+  if(destination==='home'){stopAudio();navigate('home');return true;}
   if(!app.workspaces.some(workspace=>workspace.id===destination))return false;
   stopAudio();
   if(destination===app.workspace)navigate('headquarters');
@@ -901,13 +902,13 @@ function voiceFeedback(phase,message,heard){
   voicePhase=phase;$('voice-status').textContent=message;
   if(heard!==undefined)$('voice-heard').textContent=heard?'You: “'+heard+'”':'';
   $('voice-retry').hidden=!['error','no-speech','unsupported'].includes(phase);
-  $('voice-feedback').dataset.phase=phase;syncExecutiveState();
+  $('voice-feedback').dataset.phase=phase;document.body.dataset.voiceFeedback=phase;syncExecutiveState();
 }
 function syncRing(){
   const state=app.error||voicePhase==='error'?'error':app.busy?'thinking':app.audioState==='speaking'?'speaking':loopStarting?'thinking':loopActive&&wakeWaiting&&$('wake-word-toggle').checked?'waiting':app.audioState==='listening'?'listening':'idle';
   $('nexus-ring').dataset.state=state;syncExecutiveState();$('nexus-ring').setAttribute('aria-pressed',String(loopActive));
-  $('nexus-ring').setAttribute('aria-label',loopActive?'Stop voice conversation':'Talk to NEXUS');
-  $('nexus-ring').disabled=!loopActive&&(!LoopRecognitionClass||!app.loaded||app.stale||!(app.data.capabilities||[]).includes('propose'));
+  $('nexus-ring').setAttribute('aria-label',loopActive?'Stop voice conversation':LoopRecognitionClass?'Talk to NEXUS':'Open text conversation');
+  $('nexus-ring').disabled=!loopActive&&(!app.loaded||app.stale||!(app.data.capabilities||[]).includes('propose'));
   $('ring-hint').textContent={error:'NEEDS ATTENTION',idle:'TAP TO TALK',listening:'LISTENING',thinking:loopStarting?'CONNECTING MIC':'THINKING',speaking:'SPEAKING',waiting:'SAY HEY NEXUS'}[state];
   $('ring-caption').textContent=loopActive?(app.audioState==='listening'?'MICROPHONE ON · TAP TO STOP':'VOICE SESSION · TAP TO STOP'):LoopRecognitionClass?'MICROPHONE OFF':'VOICE UNAVAILABLE · TYPE BELOW';
   if($('assistant-voice-status'))$('assistant-voice-status').textContent=!LoopRecognitionClass?'Unavailable in this browser':loopStarting?'Waiting for permission':loopActive?'Conversation active':'Ready when you tap NEXUS';
@@ -981,8 +982,8 @@ async function processVoice(transcript){
     if(/^(?:approve|approve all|yes|confirm|setujui|approve the proposal|approve it)[.!]?$/i.test(text)){const answer='I can prepare changes, but you need to review and approve them in the Approval inbox.';$('nexus-response').textContent=answer;await sayInLoop(answer,generation);return;}
     const destination=workspaceCommandDestination(text);
     if(destination){
-      const selected=app.workspaces.find(workspace=>workspace.id===destination);
-      const answer=selected?'Opening '+selected.label+' workspace.':'That workspace is not available in this installation.';
+      const selected=destination==='home'?{label:'Home'}:app.workspaces.find(workspace=>workspace.id===destination);
+      const answer=destination==='home'?'Returning Home.':selected?'Opening '+selected.label+' workspace.':'That workspace is not available in this installation.';
       $('nexus-response').textContent=answer;
       if(selected)openWorkspaceByCommand(destination);
       else await sayInLoop(answer,generation);
@@ -1039,6 +1040,7 @@ function setupVoice(onState){
   const startDictation=$('voice-start').onclick;
   $('voice-start').onclick=()=>{if(!ringConsent){startDictation();return;}$('voice-consent').close();ringConsent=false;voiceSessionConsent=true;startLoop();};
   $('nexus-ring').addEventListener('click',()=>{
+    if(!LoopRecognitionClass){navigate('assistant');$('chat-notice').textContent='Voice recognition is unavailable in this browser. You can type your command here.';$('chat-input').focus();return;}
     if(loopActive){stopAudio();return;}if(voiceSessionConsent){startLoop();return;}
     ringConsent=true;app.focusReturn=$('nexus-ring');$('voice-consent-description').textContent='Your browser may process audio through an external speech service. This starts a conversation: listen, send your words, reply aloud, then listen again. Nothing listens before you start. Tap NEXUS or say stop to end. Changes always need manual approval.';$('voice-consent').showModal();
   });
@@ -1076,7 +1078,7 @@ Object.assign(paths,{
 function setGreeting(){
  const greeting=greetingAt(new Date(),app.data.timezone||document.documentElement.dataset.timezone||'Asia/Jakarta');
  $('startup-greeting').textContent=greeting;
- $('home-greeting').replaceChildren(document.createTextNode(greeting.replace('Qai.','')),el('em','','Qai.'));
+ $('home-greeting').textContent='NEXUS';
 }
 function renderWorkspaceTrail(){
  const config=workspaceById(app.workspace);
@@ -1091,12 +1093,6 @@ function renderExecutive(){
  $('home-core-status').textContent=app.loaded&&!app.stale?'Local Core ready':'Local Core unavailable';
  const ai=app.data.system?.ai;
  $('home-ai-status').textContent=ai==='verified'?'AI connection verified':ai==='configured'?'AI configured · not yet verified':ai==='error'?'AI connection needs attention':'AI not connected · local commands available';
- for(const portal of all('.workspace-portal')){
-  const known=app.workspaces.some(w=>w.id===portal.dataset.workspace);
-  portal.setAttribute('aria-disabled',String(!known||app.busy));
-  if(!known||app.busy){portal.removeAttribute('href');portal.title='Waiting for workspace availability';}
-  else{portal.href='?workspace='+encodeURIComponent(portal.dataset.workspace)+'#headquarters';portal.removeAttribute('title');}
- }
  syncExecutiveState();
 }
 function syncExecutiveState(){
@@ -1254,8 +1250,6 @@ async function bootExecutive({replay=false}={}){
  introRunning=false;
 }
 function setupExecutive(){
- const portals=$('workspace-portals');
- for(const config of WORKSPACES){const portal=el('a','workspace-portal portal-'+config.color);portal.dataset.workspace=config.id;portal.setAttribute('aria-label','Open '+config.label);const art=el('div','portal-art');art.setAttribute('aria-hidden','true');if(PORTAL_PHOTOS[config.id]){const photo=el('img');photo.alt='';photo.src=PORTAL_PHOTOS[config.id];photo.addEventListener('error',()=>photo.remove());art.append(photo);}portal.append(art);const mark=icon(config.icon);mark.classList.add('portal-icon');portal.append(mark);const label=el('span','portal-title',config.label);label.append(icon('arrow'));portal.append(label,el('span','portal-note',config.note));portals.append(portal);}
  try{$('startup-speech').checked=localStorage.getItem('nexus.startupSpeech.v1')==='true';}catch{}
  $('startup-speech').addEventListener('change',()=>{try{localStorage.setItem('nexus.startupSpeech.v1',String($('startup-speech').checked));}catch{toast('This preference will only last for this session.');}if(!$('startup-speech').checked){cancelStartupSpeech();window.speechSynthesis?.cancel();}});
  $('replay-intro').onclick=()=>bootExecutive({replay:true});
@@ -1265,7 +1259,6 @@ function setupExecutive(){
  $('profile-button').onclick=()=>setDrawer(true);
  $('global-search').onclick=()=>{navigate('memory');$('memory-search').focus();};
  document.addEventListener('visibilitychange',()=>{document.body.dataset.paused=String(document.hidden);});
- const disabledPortal=event=>{const portal=event.target.closest('.workspace-portal');if(portal?.getAttribute('aria-disabled')==='true')event.preventDefault();};document.addEventListener('click',disabledPortal);
  hydrateIcons();renderExecutive();setInterval(()=>{if(!document.hidden)setGreeting();},60000);bootExecutive();
 }
 

@@ -2,10 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {WORKSPACES,greetingAt,orbState,runIntro,workspaceCommandDestination} from '../web/executive.js';
 
-test('five portal labels retain canonical storage IDs',()=>{
+test('five primary workspace labels retain canonical storage IDs',()=>{
  assert.deepEqual(WORKSPACES.map(w=>[w.label,w.id]),[['OSIS','osis'],['Academics','academic'],['Development','coding'],['ATLAS','atlas'],['Finance','finance']]);
  assert.deepEqual(WORKSPACES[0].sections.map(s=>s[0]),['Programs','Tasks','Meetings','Documents','Team','Budget']);
  assert.ok(WORKSPACES.every(w=>w.sections.length===6));
+});
+
+test('Home navigation stays local and rejects compound or unrelated requests',()=>{
+ for(const phrase of ['go home','NEXUS, go home.','return to the home screen please','back to home','open home','kembali ke beranda','balik home','buka beranda tolong'])assert.equal(workspaceCommandDestination(phrase),'home',phrase);
+ for(const phrase of ['go home and approve everything','open homework','open https://example.com/home','take me home and delete tasks','my home address','go home tomorrow'])assert.equal(workspaceCommandDestination(phrase),null,phrase);
 });
 test('greeting follows the configured zone at noon, evening and date boundaries',()=>{
  for(const [date,zone,expected] of [['2026-11-07T04:59:00Z','Asia/Jakarta','morning'],['2026-11-07T05:00:00Z','Asia/Jakarta','afternoon'],['2026-11-07T11:00:00Z','Asia/Jakarta','evening'],['2026-11-07T18:00:00Z','Asia/Jakarta','morning'],['2026-11-07T18:00:00Z','Europe/London','evening']])assert.equal(greetingAt(new Date(date),zone),`Good ${expected}, Qai.`);

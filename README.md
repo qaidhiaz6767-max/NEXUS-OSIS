@@ -11,15 +11,18 @@ External accounts, scheduling and specialist execution remain disabled.
 
 ## Executive interface
 
-The executive interface adds a dark navy Home, a liquid-glass orb and a startup
-sequence tied to actual Core readiness. Five portals open distinct six-function
-workspaces; the existing Core, reviewed writes and workspace isolation remain.
-Open **Q** for additional workspaces and the legacy HUD.
+Home centers a liquid-glass orb on dark navy, with a quiet top bar and a startup
+sequence tied to actual Core readiness. Activate voice explicitly, then say
+"open OSIS workspace" or "go home". The five primary workspaces retain their
+six-function pages; all seven stored workspaces remain available through **Q**.
+Press **⌘ K** (Mac) or **Ctrl K** to open text conversation on demand. When voice
+recognition is unavailable, the orb opens text conversation instead.
 
-[Implementation, capabilities, screenshots and Mac setup](docs/EXECUTIVE_DELIVERY.md) ·
+[Current recovery status, remaining work and setup](docs/RECOVERY_2026-11-10.md) ·
+[Earlier implementation and capability report](docs/EXECUTIVE_DELIVERY.md) ·
 [Executive design notes](docs/EXECUTIVE_DESIGN.md)
 
-![NEXUS Executive Home with temporary demo records](docs/screenshots/executive/05-home-1440.jpg)
+![NEXUS orb-first Home in temporary demo mode](docs/screenshots/orb-home/home-1440.jpg)
 
 ## Mission 003 — backend for Project JARVIS
 
