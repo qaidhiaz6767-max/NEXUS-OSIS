@@ -1,4 +1,4 @@
-import {WORKSPACES,PORTAL_PHOTOS,workspaceById,greetingAt,orbState,runIntro} from './executive.js';
+import {WORKSPACES,PORTAL_PHOTOS,workspaceById,greetingAt,orbState,runIntro,workspaceCommandDestination} from './executive.js';
 
 const app = {
   workspace: new URLSearchParams(location.search).get('workspace') || '',
@@ -479,12 +479,26 @@ async function refresh({notify=false}={}){
     return false;
   }
 }
+// Navigating never contacts the model or changes Core records. The destination
+// must already be present in the server-provided readable workspace list.
+function openWorkspaceByCommand(destination) {
+  if(!app.workspaces.some(workspace=>workspace.id===destination))return false;
+  stopAudio();
+  if(destination===app.workspace)navigate('headquarters');
+  else window.location.assign(location.pathname+'?workspace='+encodeURIComponent(destination)+'#headquarters');
+  return true;
+}
 function resultState(result){
   app.error=result.status==='error'||['error','unavailable'].includes(result.provider_status);
   app.assistantState=app.error?'Error':result.pending?'Awaiting approval':'Ready';
 }
 async function command(message,{stay=false,fromVoice=false}={}){
   if(app.busy||app.stale||!app.loaded||!message.trim())return false;
+  const destination=workspaceCommandDestination(message);
+  if(destination){
+    if(openWorkspaceByCommand(destination))return true;
+    toast('That workspace is not available in this installation.','error');return false;
+  }
   app.busy=true;app.error=false;syncStatus();if(!stay)navigate('assistant',{focus:false});renderChat();
   let ok=false;
   try{
@@ -965,6 +979,15 @@ async function processVoice(transcript){
     if($('wake-word-toggle').checked&&wakeWaiting&&!wake){voiceFeedback('waiting','Waiting for “Hey NEXUS” while this voice session is on.');return;}
     if(wake){text=wake[1].trim();wakeWaiting=false;wakeBeep();await sayInLoop('Yes?',generation);if(!text)return;}
     if(/^(?:approve|approve all|yes|confirm|setujui|approve the proposal|approve it)[.!]?$/i.test(text)){const answer='I can prepare changes, but you need to review and approve them in the Approval inbox.';$('nexus-response').textContent=answer;await sayInLoop(answer,generation);return;}
+    const destination=workspaceCommandDestination(text);
+    if(destination){
+      const selected=app.workspaces.find(workspace=>workspace.id===destination);
+      const answer=selected?'Opening '+selected.label+' workspace.':'That workspace is not available in this installation.';
+      $('nexus-response').textContent=answer;
+      if(selected)openWorkspaceByCommand(destination);
+      else await sayInLoop(answer,generation);
+      return;
+    }
     const previousDraft=ledgerDraft,local=ledgerVoice(text);let response,display;
     if(local!==null)response=display=local;
     else{
