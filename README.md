@@ -196,6 +196,7 @@ screenshots. See the testing guide for prerequisites and limits.
 
 [Architecture](docs/NEXUS_CORE_ARCHITECTURE.md) ·
 [Implementation plan](docs/IMPLEMENTATION_PLAN.md) ·
+[JARVIS feature blueprint](docs/NEXUS_JARVIS_FEATURE_BLUEPRINT.md) ·
 [Mission report](docs/MISSION_001_REPORT.md) ·
 [Security](docs/SECURITY_AND_PRIVACY.md) ·
 [Testing](docs/TESTING_AND_RELEASES.md)
