@@ -70,8 +70,8 @@ with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'NEXUS_TIMEZONE
             expect(page.locator('#overview-tasks .record-link').first).to_have_text('Overdue stage review')
             initial_ms=round((time.perf_counter()-started)*1000)
             snapshot(page,'command-center-desktop')
-            # Home command -> persisted briefing in Assistant.
-            page.locator('#home-input').fill('/brief');page.locator('#home-input').press('Enter')
+            # Home keyboard fallback -> persisted briefing in Assistant.
+            page.keyboard.press('Control+k');page.locator('#chat-input').fill('/brief');page.locator('#chat-input').press('Enter')
             expect(page.locator('#view-assistant')).to_be_visible()
             expect(page.locator('#chat-messages')).to_contain_text('OSIS BRIEFING')
             expect(page.locator('#send-button')).to_be_enabled()
@@ -229,6 +229,7 @@ with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'NEXUS_TIMEZONE
             };""")
             voice_page=voice_context.new_page();voice_page.goto(f'http://127.0.0.1:{server.server_port}')
             expect(voice_page.locator('#workspace-select')).to_be_enabled()
+            expect(voice_page.locator('body')).to_have_attribute('data-startup','home');nav(voice_page,'headquarters')
             mic=voice_page.locator('[data-mic-target="home-input"]');expect(mic).to_be_enabled();mic.click()
             expect(voice_page.locator('#voice-consent')).to_be_visible();expect(voice_page.locator('#ai-presence')).to_have_attribute('data-state','idle')
             voice_page.locator('#voice-cancel').click();mic.click();voice_page.locator('#voice-start').click()

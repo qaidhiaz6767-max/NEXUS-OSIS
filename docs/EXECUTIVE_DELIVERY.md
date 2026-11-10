@@ -1,5 +1,7 @@
 # NEXUS Executive — implementation and review
 
+> Historical delivery report for the November 7 design. The later orb-first Home direction and November 10 recovery status are tracked in [the current recovery report](RECOVERY_2026-11-10.md). The screenshots below preserve the earlier delivered appearance.
+
 NEXUS now opens into the approved dark navy and liquid-glass direction, with a quiet Home, five correctly mapped workspace portals, and dedicated six-function workspace pages. The existing local Core, permissions, approval services, voice integration, legacy HUD, public feeds and browser ledger remain available.
 
 This is a reviewable development version, not a claim of perfection or a production security certification. Review the real screenshots and the capability boundaries below before merging.

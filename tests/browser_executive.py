@@ -9,7 +9,7 @@ from app import handler_factory
 from nexus.workspaces import WorkspaceRegistry
 from nexus.demo import seed_demo
 
-SHOTS=Path(os.environ.get('NEXUS_SCREENSHOT_DIR','docs/screenshots/executive'))
+SHOTS=Path(os.environ.get('NEXUS_SCREENSHOT_DIR','work/screenshots/executive'))
 SHOTS.mkdir(parents=True,exist_ok=True)
 def shot(page,name):
  page.mouse.move(1,1)
@@ -60,14 +60,15 @@ with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'NEXUS_TIMEZONE
    assert page.evaluate('window.originalOrb===document.getElementById("orb-stage")')
    assert page.evaluate('window.introStages').index('ready')>page.evaluate('window.introStages').index('initializing')
    assert len(world)==0,'Home fetched public feeds'
-   assert page.locator('.workspace-portal').count()==5
+   assert page.locator('.workspace-portal').count()==0
+   expect(page.locator('#home-command-form')).not_to_be_visible()
    shot(page,'05-home-1440')
    for width,height in [(1280,800),(1024,768),(390,844)]:
     page.set_viewport_size({'width':width,'height':height});page.wait_for_timeout(200)
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),('home',width)
-    boxes=page.locator('.workspace-portal').evaluate_all('(els)=>els.map(e=>({x:e.getBoundingClientRect().x,y:e.getBoundingClientRect().y,w:e.getBoundingClientRect().width}))')
-    if width==1280:assert len(set(round(b['y']) for b in boxes))==1
-    if width==390:assert len(set(round(b['y']) for b in boxes))==3
+    box=page.locator('#orb-stage').bounding_box()
+    assert box['x']>=0 and box['x']+box['width']<=width
+    assert box['y']>=0 and box['y']+box['height']<=height
     shot(page,f'home-{width}')
    page.set_viewport_size({'width':1440,'height':900})
    for workspace in ['osis','academic','coding','atlas','finance']:
@@ -151,6 +152,6 @@ with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'NEXUS_TIMEZONE
    expect(s.locator('#orb-stage')).to_have_attribute('data-state','speaking')
    nav(s,'settings');s.locator('#startup-speech').uncheck();expect(s.locator('#orb-stage')).to_have_attribute('data-state','idle')
    s.evaluate('window.testUtterance.onstart?.()');expect(s.locator('#orb-stage')).to_have_attribute('data-state','idle')
-   print(json.dumps({'passed':'Executive startup, real readiness/retry, stable orb, default silence, five mapped portals, all 30 functions, structured records + manual approvals, isolated storage, 4 viewport sizes, keyboard focus, reduced motion','screenshots':len(list(SHOTS.glob('*.jpg'))),'page_errors':errors,'unexpected_external_requests':external}))
+   print(json.dumps({'passed':'Executive startup, real readiness/retry, stable orb-only Home, default silence, all 30 functions, structured records + manual approvals, isolated storage, 4 viewport sizes, keyboard focus, reduced motion','screenshots':len(list(SHOTS.glob('*.jpg'))),'page_errors':errors,'unexpected_external_requests':external}))
    browser.close()
  finally:server.shutdown();server.server_close();thread.join();state_delay.stop()

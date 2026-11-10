@@ -3644,4 +3644,21 @@ body.executive-app::before,body.executive-app::after{display:none}
 @media(max-width:380px){.executive-app:not([data-page=home]) #refresh-button{display:none}.executive-app .header-actions #global-search{display:none}}
 .executive-app[data-page=legacy] #customize-button{display:flex}.executive-app .market-ticker small{overflow-wrap:anywhere}
 @media(min-width:901px) and (max-height:850px){.executive-app .topbar{height:68px}.home-hero{padding-top:5px}.orb-stage{height:225px;width:270px}.workspace-portal{min-height:130px}.portal-note{margin-top:7px}.executive-app[data-page=home] .assistant-dock{margin-top:10px}.executive-app[data-page=home] .app-footer{padding-bottom:10px}}
+
+/* Orb-first Home. Workspace tools and the keyboard-accessible assistant stay intact. */
+.executive-app[data-page=home] .workspace{display:flex;flex-direction:column;min-height:100vh;min-height:100svh}
+.executive-app[data-page=home] .workbody{flex:1;display:grid;place-items:center;padding-top:0;padding-bottom:0}
+.executive-app[data-page=home] #view-home{width:100%}
+.executive-app[data-page=home] .home-hero{display:grid;place-items:center;padding:0}
+.executive-app[data-page=home][data-startup=home] .orb-stage{width:min(520px,88vw,70svh);height:auto;aspect-ratio:1;margin:0}
+.executive-app[data-page=home] .orb-state-label.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;clip:rect(0,0,0,0);overflow:hidden;white-space:nowrap;bottom:auto;right:auto}
+.executive-app[data-page=home] .home-readiness.sr-only{margin:0}
+.executive-app[data-page=home] .assistant-dock,.executive-app[data-page=home] .app-footer{display:none}
+.executive-app[data-page=home][data-voice-feedback=error] .assistant-dock,
+.executive-app[data-page=home][data-voice-feedback=no-speech] .assistant-dock{display:block;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);width:min(620px,calc(100% - 32px));margin:0;z-index:40}
+.executive-app[data-page=home] .assistant-dock .dock-context,
+.executive-app[data-page=home] #home-command-form,
+.executive-app[data-page=home] .dock-voice,
+.executive-app[data-page=home] #nexus-response{display:none}
+.voice-feedback:not([data-phase=error]):not([data-phase=no-speech]) .voice-transcript{display:none}
 .executive-app .sidebar{transition:transform .3s var(--ex-ease)}

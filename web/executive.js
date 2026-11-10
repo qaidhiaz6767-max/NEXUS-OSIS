@@ -27,6 +27,7 @@ export function workspaceCommandDestination(input) {
   const request=String(input||'').trim()
     .replace(/^(?:(?:hey|hi|halo)\s+)?nexus[,\s:]*/i,'')
     .replace(/[.!?]+$/,'').trim().toLowerCase();
+  if(/^(?:(?:go|return|back)(?:\s+to)?\s+(?:the\s+)?home(?:\s+(?:screen|page))?|(?:open|show)\s+(?:the\s+)?home(?:\s+(?:screen|page))?|(?:kembali|balik)(?:\s+ke)?\s+(?:home|beranda)|buka\s+beranda)(?:\s+(?:please|tolong))?$/.test(request))return 'home';
   const match=request.match(/^(?:open|show|go to|switch to|take me to|buka|masuk ke|pindah ke|tampilkan)\s+(?:(?:the|my|ke)\s+)?(?:(?:workspace|headquarters|dashboard|ruang kerja)\s+)?(osis|academic|academics|development|coding|atlas|finance|personal|research)(?:\s+(?:workspace|headquarters|dashboard|ruang kerja))?(?:\s+(?:please|tolong))?$/);
   if(!match)return null;
   const aliases={academics:'academic',development:'coding'};
