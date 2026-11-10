@@ -107,7 +107,7 @@ class NexusTests(unittest.TestCase):
 
         fake_openai = types.SimpleNamespace(OpenAI=FakeClient)
         with patch.dict(sys.modules, {"openai": fake_openai}), patch.dict(os.environ, {"OPENAI_API_KEY": "test-token"}):
-            result = Coordinator(self.store).chat("Give OSIS Deputy an assembly task")
+            result = Coordinator(self.store, allow_ai=True).chat("Give OSIS Deputy an assembly task")
         self.assertIn("pending", result)
         self.assertEqual(self.store.state()["tasks"], [])
         self.store.decide(result["pending"]["id"], True)

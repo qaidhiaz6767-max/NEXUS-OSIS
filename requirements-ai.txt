@@ -1,2 +1,2 @@
-# Optional: conversational AI is disabled when this package or OPENAI_API_KEY is absent.
+# Optional. Cloud AI also requires OPENAI_API_KEY and explicit --enable-ai.
 openai>=1.75,<3
