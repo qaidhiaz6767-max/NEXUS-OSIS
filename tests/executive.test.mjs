@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {WORKSPACES,greetingAt,orbState,runIntro} from '../web/executive.js';
+import {WORKSPACES,greetingAt,orbState,runIntro,workspaceCommandDestination} from '../web/executive.js';
 
 test('five portal labels retain canonical storage IDs',()=>{
  assert.deepEqual(WORKSPACES.map(w=>[w.label,w.id]),[['OSIS','osis'],['Academics','academic'],['Development','coding'],['ATLAS','atlas'],['Finance','finance']]);
@@ -23,4 +23,31 @@ test('skip and reduced motion never bypass actual readiness',async()=>{
 });
 test('orb responds only to real request/audio state, including errors',()=>{
  assert.equal(orbState(),'idle');assert.equal(orbState({busy:true}),'thinking');assert.equal(orbState({audio:'listening'}),'listening');assert.equal(orbState({audio:'speaking'}),'speaking');assert.equal(orbState({busy:true,error:true}),'error');assert.equal(orbState({audio:'starting'}),'idle');
+});
+
+test('spoken and typed workspace commands map only to known local workspace IDs',()=>{
+ const accepted={
+  'open OSIS workspace':'osis',
+  'NEXUS, open workspace OSIS':'osis',
+  'Hey Nexus, switch to the Academics workspace':'academic',
+  'show my development dashboard':'coding',
+  'open ATLAS':'atlas',
+  'go to the Finance workspace please':'finance',
+  'buka workspace osis':'osis',
+  'pindah ke ruang kerja atlas':'atlas',
+  'open personal workspace':'personal',
+  'show research':'research'
+ };
+ for(const [phrase,destination] of Object.entries(accepted))
+  assert.equal(workspaceCommandDestination(phrase),destination,phrase);
+ for(const phrase of [
+  'approve all pending changes',
+  'open a finance transaction',
+  'delete OSIS workspace',
+  'open https://example.com',
+  'open external workspace',
+  'open a new tab',
+  '',
+  'Please open the system settings'
+ ])assert.equal(workspaceCommandDestination(phrase),null,phrase);
 });
