@@ -18,6 +18,11 @@ six-function pages; all seven stored workspaces remain available through **Q**.
 Press **⌘ K** (Mac) or **Ctrl K** to open text conversation on demand. When voice
 recognition is unavailable, the orb opens text conversation instead.
 
+Voice-first update: local English/Indonesian navigation, final-transcript safety,
+tap-to-interrupt, Escape to stop, guarded late replies and permission recovery.
+Spoken replies are optional in Settings; no microphone starts on launch.
+See [voice behavior, test results, cancellation limits and Mac setup](docs/VOICE_FIRST_DELIVERY.md).
+
 [Current recovery status, remaining work and setup](docs/RECOVERY_2026-11-10.md) ·
 [Earlier implementation and capability report](docs/EXECUTIVE_DELIVERY.md) ·
 [Executive design notes](docs/EXECUTIVE_DESIGN.md)

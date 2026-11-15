@@ -21,7 +21,7 @@ class ExecutiveShellTests(unittest.TestCase):
     self.assertNotIn('<script type="module">',markup)
     self.assertNotIn('unsafe-inline',policy);self.assertNotIn('unsafe-eval',policy)
     self.assertIn("connect-src 'self'",policy)
-    for name in ['app.js','style.css','executive.js']:
+    for name in ['app.js','style.css','executive.js','voice-session.js']:
      with urlopen(base+'/'+name) as response:self.assertGreater(len(response.read()),100)
     self.assertEqual(store.state()['tasks'],[])
    finally:server.shutdown();server.server_close();thread.join()

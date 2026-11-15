@@ -1,5 +1,14 @@
 # Changelog
 
+## Voice-first continuation — 2026-11-15
+
+- Preserve the approved orb-only Home, startup readiness, five primary workspaces and seven stored scopes from PR #9.
+- Broaden bounded local English/Indonesian workspace and Home navigation without model calls.
+- Add explicit tap/keyboard interruption, guarded late replies, fresh recognition attempts and stale speech/dictation callback rejection.
+- Dispatch final transcripts only; preserve reviewed dictation and manual approvals. Add optional spoken replies, visible recovery and microphone/speech watchdogs.
+- Handle disconnected HTTP clients without attempting a second response. Server-side completion after interruption remains possible and is documented.
+- Add turn/routing/transcript tests, a synthetic voice browser suite and CI coverage. No Core/schema/provider or real-data changes.
+
 ## v0.5 — Project JARVIS cognitive Core (Mission 003)
 
 - Integrated the pasted single-file frontend CSP compatibility change while retaining Mission 003 APIs and recovery locks. Exact trusted inline script/style hashes are allowed; handlers, eval and unlisted scripts remain blocked. Added HTTP and Chromium coverage without changing frontend files.

@@ -1,5 +1,12 @@
 # Claude frontend handoff — Mission 003
 
+**Current voice UI:** the later Executive/orb-only frontend supersedes the
+Mission 003 frontend baseline discussed below. See [VOICE_FIRST_DELIVERY.md](VOICE_FIRST_DELIVERY.md)
+for the current interaction and cancellation contract. Existing HTTP payloads
+are unchanged; `/voice-session.js` is a new allowlisted static module. An aborted
+browser request can still finish server-side. Never show interruption as a
+confirmed rollback or cancellation of an approved action.
+
 The entire `web/` tree remains byte-for-byte unchanged from Mission 002. This
 branch adds backend functionality and documentation. Use [API_CONTRACT.md](API_CONTRACT.md)
 as the source for routes and payloads; no frontend endpoint is implied by a
