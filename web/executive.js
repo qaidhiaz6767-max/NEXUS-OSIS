@@ -24,13 +24,15 @@ export function workspaceById(id){return WORKSPACES.find(w=>w.id===id);}
 // Voice and text navigation is deliberately local: it never invokes AI tools,
 // approves changes, or accepts arbitrary URLs. Only known workspace IDs resolve.
 export function workspaceCommandDestination(input) {
-  const request=String(input||'').trim()
-    .replace(/^(?:(?:hey|hi|halo)\s+)?nexus[,\s:]*/i,'')
+  if(typeof input!=='string'||input.length>300)return null;
+  const request=input.normalize('NFKC').trim()
+    .replace(/^(?:(?:hey|hi|halo)\s+)?nexus\b[,\s:]*/i,'')
+    .replace(/^(?:please|tolong)\s+/i,'')
     .replace(/[.!?]+$/,'').trim().toLowerCase();
-  if(/^(?:(?:go|return|back)(?:\s+to)?\s+(?:the\s+)?home(?:\s+(?:screen|page))?|(?:open|show)\s+(?:the\s+)?home(?:\s+(?:screen|page))?|(?:kembali|balik)(?:\s+ke)?\s+(?:home|beranda)|buka\s+beranda)(?:\s+(?:please|tolong))?$/.test(request))return 'home';
-  const match=request.match(/^(?:open|show|go to|switch to|take me to|buka|masuk ke|pindah ke|tampilkan)\s+(?:(?:the|my|ke)\s+)?(?:(?:workspace|headquarters|dashboard|ruang kerja)\s+)?(osis|academic|academics|development|coding|atlas|finance|personal|research)(?:\s+(?:workspace|headquarters|dashboard|ruang kerja))?(?:\s+(?:please|tolong))?$/);
+  if(/^(?:(?:go(?:\s+back)?|return|back)(?:\s+to)?\s+(?:the\s+)?home(?:\s+(?:screen|page))?|take me home|(?:open|show)\s+(?:the\s+)?home(?:\s+(?:screen|page))?|(?:kembali|balik)(?:\s+ke)?\s+(?:home|beranda|halaman utama)|buka\s+(?:beranda|halaman utama))(?:\s+(?:please|tolong))?$/.test(request))return 'home';
+  const match=request.match(/^(?:open|show|go to|switch to|take me to|buka|bukakan|masuk ke|pindah ke|tampilkan)\s+(?:(?:the|my|ke)\s+)?(?:(?:workspace|headquarters|dashboard|ruang kerja)\s+)?(osis|academic|academics|akademik|akademis|development|coding|pengembangan|atlas|finance|keuangan|personal|pribadi|research|riset|penelitian)(?:\s+(?:workspace|headquarters|dashboard|ruang kerja))?(?:\s+(?:please|tolong))?$/);
   if(!match)return null;
-  const aliases={academics:'academic',development:'coding'};
+  const aliases={academics:'academic',akademik:'academic',akademis:'academic',development:'coding',pengembangan:'coding',keuangan:'finance',pribadi:'personal',riset:'research',penelitian:'research'};
   return aliases[match[1]]||match[1];
 }
 

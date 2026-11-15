@@ -1,3 +1,5 @@
+import {TurnGate,speechParts,voiceStopCommand} from './voice-session.js';
+const commandTurns = new TurnGate();
 import {WORKSPACES,workspaceById,greetingAt,orbState,runIntro,workspaceCommandDestination} from './executive.js';
 
 const app = {
@@ -98,10 +100,12 @@ function actionTitle(name) {
 }
 
 
-async function api(path, {method='GET', body, workspace=app.workspace}={}) {
+async function api(path, {method='GET', body, workspace=app.workspace, signal}={}) {
   const query = path.includes('?') ? '&' : '?';
   const scoped = workspace ? path + query + 'workspace=' + encodeURIComponent(workspace) : path;
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   const timer = setTimeout(() => controller.abort(), method==='GET'?12000:90000);
   try {
     const response = await fetch(scoped, {
@@ -114,10 +118,11 @@ async function api(path, {method='GET', body, workspace=app.workspace}={}) {
     if (!response.ok) throw new Error(result.error || 'The local request could not be completed.');
     return result;
   } catch (error) {
+    if (signal?.aborted) throw error;
     if (error.name === 'AbortError') throw new Error('The request timed out. Its outcome is unconfirmed. Refresh before trying the action again.');
     if (error instanceof TypeError) throw new Error('Could not reach the local NEXUS server. Check that it is running, then retry.');
     throw error;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort',abort); }
 }
 const post = (path, body, workspace=app.workspace) => api(path, {method:'POST', body, workspace});
 
@@ -381,46 +386,57 @@ function formAction() {
 }
 
 
-let recognizer=null,target=null,update=()=>{},starting=false;
-function voiceAvailable(){return recognizer!==null;}
-function controls() {
+let recognizer=null,DictationClass=null,target=null,update=()=>{},starting=false,dictationGeneration=0,dictationTimer=null;
+function voiceAvailable(){return Boolean(DictationClass);}
+function controls(){
   for(const button of all('[data-mic-target]')){
     const active=app.audioState==='listening'&&target?.id===button.dataset.micTarget;
     button.classList.toggle('listening',active);button.setAttribute('aria-label',active?'Stop listening':'Dictate '+(button.dataset.micTarget==='home-input'?'a command':'a message'));
-    button.setAttribute('title',active?'Stop listening':recognizer?'Dictate after reviewing privacy notice':'Browser dictation unavailable');
+    button.setAttribute('title',active?'Stop listening':DictationClass?'Dictate after reviewing privacy notice':'Browser dictation unavailable');
     button.setAttribute('aria-pressed',String(active));button.replaceChildren(icon(active?'stop':'mic'));
-    button.disabled=app.busy||starting||!recognizer||!(app.data.capabilities||[]).includes('propose');
+    button.disabled=app.busy||starting||!DictationClass||!(app.data.capabilities||[]).includes('propose');
   }
 }
 function syncDictationControls(){controls();}
-function stopDictation(){cancelStartupSpeech();recognizer?.abort();window.speechSynthesis?.cancel();starting=false;app.audioState='idle';controls();update();}
-function speakDictation(text) {
-  if(!$('speak-toggle').checked||!('speechSynthesis' in window))return;
-  window.speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(String(text).slice(0,1500));utterance.lang=$('voice-language').value;
-  utterance.onstart=()=>{app.audioState='speaking';update();};utterance.onend=()=>{app.audioState='idle';update();};
-  utterance.onerror=()=>{app.audioState='idle';toast('Spoken playback stopped or was unavailable.');update();};
-  window.speechSynthesis.speak(utterance);
+function stopDictation(){
+  dictationGeneration++;clearTimeout(dictationTimer);const old=recognizer;recognizer=null;target=null;
+  try{old?.abort();}catch{}cancelStartupSpeech();starting=false;app.audioState='idle';controls();update();
 }
-function setupDictation(onState) {
-  update=onState;const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(Recognition){
-    recognizer=new Recognition();recognizer.interimResults=false;recognizer.continuous=false;
-    recognizer.onstart=()=>{starting=false;app.audioState='listening';$('chat-notice').textContent='Listening. Use the highlighted mic button to stop.';controls();update();};
-    recognizer.onresult=event=>{if(!target)return;const transcript=Array.from(event.results).map(r=>r[0].transcript).join(' ');const next=target.value+(target.value?' ':'')+transcript;target.value=next.slice(0,3000);$('chat-notice').textContent='Transcript ready. Review it before sending.';};
-    recognizer.onend=()=>{starting=false;app.audioState='idle';controls();update();};
-    recognizer.onerror=event=>{starting=false;app.audioState='idle';toast('Dictation unavailable: '+event.error+'. You can type your command.','error');controls();update();};
-  }
-  $('voice-support').textContent=recognizer?'Browser dictation is available. Audio may leave this device through the browser’s speech service.':'Browser dictation is unavailable. Use your keyboard or the device’s own dictation feature.';
+function speakDictation(text){
+  if(!$('speak-toggle').checked)return;
+  const workspace=app.workspace;playReply(text,()=>workspace===app.workspace);
+}
+function setupDictation(onState){
+  update=onState;DictationClass=window.SpeechRecognition||window.webkitSpeechRecognition;
+  $('voice-support').textContent=DictationClass?'Browser speech is available. It may use an external service. Voice conversation sends final transcripts; the small dictation buttons only prepare text.':'Browser speech is unavailable. Use text conversation or your device’s dictation.';
   $('speak-toggle').disabled=!('speechSynthesis' in window);$('stop-speaking').disabled=!('speechSynthesis' in window);
   for(const button of all('[data-mic-target]'))button.onclick=()=>{
-    if(app.audioState==='listening'){recognizer?.stop();return;}
+    if(recognizer){stopDictation();return;}
     target=$(button.dataset.micTarget);app.focusReturn=button;$('voice-consent').showModal();
   };
-  $('voice-cancel').onclick=()=>$('voice-consent').close();
-  $('voice-start').onclick=()=>{$('voice-consent').close();if(!recognizer||app.busy)return;try{window.speechSynthesis?.cancel();recognizer.lang=$('voice-language').value;starting=true;controls();recognizer.start();$('chat-notice').textContent='Waiting for microphone permission…';}catch{starting=false;controls();toast('The microphone could not start. Check browser permissions.','error');}};
+  $('voice-cancel').onclick=()=>{$('voice-consent').close();target=null;};
+  $('voice-start').onclick=()=>{
+    $('voice-consent').close();if(!DictationClass||app.busy||!target)return;
+    const input=target,workspace=app.workspace,generation=++dictationGeneration;
+    let recognition;
+    const current=()=>generation===dictationGeneration&&recognizer===recognition&&workspace===app.workspace;
+    try{
+      cancelPlayback();recognition=new DictationClass();recognizer=recognition;recognition.lang=$('voice-language').value;recognition.interimResults=true;recognition.continuous=false;
+      recognition.onstart=()=>{if(!current())return;clearTimeout(dictationTimer);starting=false;app.audioState='listening';$('chat-notice').textContent='Listening. Final words will appear for review.';controls();update();dictationTimer=setTimeout(()=>{if(current()){stopDictation();$('chat-notice').textContent='No final transcript arrived. Check the microphone and try again.';}},18000);};
+      recognition.onresult=event=>{
+        if(!current())return;const part=speechParts(event);
+        if(!part.final){$('chat-notice').textContent=part.text?'Hearing: '+part.text:'Listening…';return;}
+        input.value=(input.value+(input.value?' ':'')+part.text).slice(0,3000);stopDictation();$('chat-notice').textContent='Transcript ready. Review it before sending.';
+      };
+      recognition.onend=()=>{if(current())stopDictation();};
+      recognition.onerror=()=>{if(!current())return;stopDictation();$('chat-notice').textContent='Dictation stopped. Check browser microphone permission or use text.';toast('Dictation is unavailable. Check microphone permission or type your message.','error');};
+      starting=true;controls();$('chat-notice').textContent='Waiting for microphone permission…';
+      dictationTimer=setTimeout(()=>{if(current()){stopDictation();$('chat-notice').textContent='Microphone permission did not arrive. Check browser settings and try again.';}},12000);
+      recognition.start();
+    }catch{stopDictation();toast('The microphone could not start. Check browser permissions.','error');}
+  };
   $('stop-speaking').onclick=stopAudio;controls();
 }
-
 
 let drawerReturn=null;
 let expiryTimer=null;
@@ -437,7 +453,7 @@ function navigate(view,{focus=true}={}){
   if(view==='nexus')view='home';
   if(view.startsWith('feature-')){activeFeatureIndex=Number(view.slice(8));view='feature';}
   if(!VIEW_NAMES[view])view='home';
-  if(loopActive)stopAudio();
+  if(loopActive||activeUtterance||commandTurns.current||starting||recognizer)stopAudio();
   app.view=view;
   for(const section of all('main>.view')){const active=section.id==='view-'+view;section.hidden=!active;section.classList.toggle('active',active);}
   for(const node of all('.nav-item')){const active=node.dataset.view===view;node.classList.toggle('active',active);if(active)node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');}
@@ -463,15 +479,16 @@ function syncStatus(){
   for(const node of all('[data-capability]'))node.disabled=app.busy||app.stale||!app.loaded||!(app.data.capabilities||[]).includes(node.dataset.capability);
   syncVoiceControls();syncExecutiveState();
 }
-async function refresh({notify=false}={}){
+async function refresh({notify=false,valid=()=>true}={}){
   const workspace=app.workspace;
   try{
     const data=await api('/api/state',{workspace});
-    if(workspace&&workspace!==app.workspace)return false;
+    if(!valid()||(workspace&&workspace!==app.workspace))return false;
     app.data=data;app.workspace=data.workspace;app.loaded=true;app.stale=false;$('load-error').hidden=true;
     if(app.error){app.error=false;app.assistantState='Ready';}
     renderAll();syncStatus();scheduleExpiryRefresh();refreshExecutive();if(notify)toast('Workspace refreshed.');return true;
   }catch(error){
+    if(!valid()||workspace!==app.workspace)return false;
     $('load-error-message').textContent=error.message+(app.loaded?' Showing the last loaded records.':'');$('load-error').hidden=false;
     app.error=true;app.stale=true;app.assistantState='Error';$('local-status').textContent='Local core unavailable';$('local-status').dataset.state='error';syncStatus();
     // Fail closed while the currently displayed state may be stale.
@@ -493,24 +510,38 @@ function resultState(result){
   app.error=result.status==='error'||['error','unavailable'].includes(result.provider_status);
   app.assistantState=app.error?'Error':result.pending?'Awaiting approval':'Ready';
 }
+function cancelCommand() {
+  if(!commandTurns.cancel())return false;
+  app.busy=false;app.error=false;app.assistantState='Ready';
+  $('plan-report').hidden=false;
+  $('plan-report').textContent='Stopped waiting for the reply. A submitted request may still finish. Check conversation history and approvals before repeating it.';
+  renderChat();syncStatus();return true;
+}
 async function command(message,{stay=false,fromVoice=false}={}){
-  if(app.busy||app.stale||!app.loaded||!message.trim())return false;
+  if(app.stale||!app.loaded||!message.trim())return false;
   const destination=workspaceCommandDestination(message);
   if(destination){
     if(openWorkspaceByCommand(destination))return true;
     toast('That workspace is not available in this installation.','error');return false;
   }
-  app.busy=true;app.error=false;syncStatus();if(!stay)navigate('assistant',{focus:false});renderChat();
+  if(app.busy)return false;
+  if(!stay)navigate('assistant',{focus:false});
+  const turn=commandTurns.begin(app.workspace),valid=()=>commandTurns.isCurrent(turn)&&turn.workspace===app.workspace;
+  app.busy=true;app.error=false;app.lastReply=null;syncStatus();renderChat();
   let ok=false;
   try{
-    const result=await post('/api/chat',{message});app.lastReply=result;resultState(result);
+    const result=await api('/api/chat',{method:'POST',body:{message},workspace:turn.workspace,signal:turn.signal});
+    if(!valid())return false;
+    app.lastReply=result;resultState(result);
     $('plan-report').textContent=result.pending?'Proposal prepared. No records have changed. Review the action card below.':app.error?result.message:'Response ready · saved in '+currentWorkspace().label+'.';
     $('plan-report').hidden=false;
-    ok=await refresh();if(ok){resultState(result);renderChat();if(!fromVoice&&!result.pending&&!app.error)speak(result.message);announce(result.pending?'Approval required.':result.message.slice(0,180));}
-  }catch(error){app.error=true;app.assistantState='Error';toast(error.message,'error');$('plan-report').hidden=false;$('plan-report').textContent=error.message;}
-  finally{app.busy=false;renderChat();syncStatus();}
-  return ok;
+    ok=await refresh({valid});
+    if(valid()&&ok){resultState(result);renderChat();if(!fromVoice&&!result.pending&&!app.error)speak(result.voice_message||result.message);announce(result.pending?'Approval required.':result.message.slice(0,180));}
+  }catch(error){if(valid()){app.error=true;app.assistantState='Error';toast(error.message,'error');$('plan-report').hidden=false;$('plan-report').textContent=error.message;}}
+  finally{if(commandTurns.finish(turn)){app.busy=false;renderChat();syncStatus();}}
+  return !turn.signal.aborted&&turn.workspace===app.workspace&&ok;
 }
+
 async function propose(name,args,{fromForm=false,workspace=app.workspace}={}){
   if(app.busy||app.stale||!app.loaded||workspace!==app.workspace)return false;
   app.busy=true;app.error=false;syncStatus();
@@ -584,10 +615,11 @@ function setup(){
   $('open-nav').onclick=()=>setDrawer(true);$('close-nav').onclick=$('nav-backdrop').onclick=()=>setDrawer(false);
   const media=matchMedia('(max-width:760px)');media.addEventListener('change',()=>setDrawer(false));$('sidebar').inert=true;
   document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&(loopActive||activeUtterance||commandTurns.current)){event.preventDefault();stopAudio();return;}
     if(event.key==='Escape'&&$('sidebar').classList.contains('open')){event.preventDefault();setDrawer(false);return;}
     if(event.key==='Tab'&&$('sidebar').classList.contains('open')){const nodes=[...$('sidebar').querySelectorAll('a,button:not([disabled]),select:not([disabled])')].filter(n=>n.getClientRects().length);const first=nodes[0],last=nodes.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}return;}
     if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){
-      const editing=event.target.closest('input,textarea,select,[contenteditable=true]');if(editing||document.querySelector('dialog[open]'))return;
+      const editing=event.target.closest('textarea,input:not([type=checkbox]):not([type=radio]):not([type=range]),select,[contenteditable=true]');if(editing||document.querySelector('dialog[open]'))return;
       event.preventDefault();navigate('assistant');$('chat-input').focus();
     }
   });
@@ -896,32 +928,37 @@ function ledgerVoice(text){
   if(!LEDGER_WRITES_ALLOWED)return 'Ledger changes are not enabled in this preview. Nothing was saved.';
   prepareLedgerEntry(entry,{deferNavigation:true});return 'I prepared a browser-only ledger draft. Review it manually in the Approval inbox. Nothing has been saved yet.';
 }
-let loopRecognition=null,LoopRecognitionClass=null,loopActive=false,loopWorking=false,loopStarting=false,loopTimer=null,loopGeneration=0,quietCycles=0,wakeWaiting=true,ringConsent=false,loopHadResult=false;
-let activeUtterance=null,audioContext=null,permissionTimer=null,silenceTimer=null,pendingSpeechFinish=null,voiceSessionConsent=false,lastVoiceReply='',voicePhase='off';
+let loopRecognition=null,LoopRecognitionClass=null,loopActive=false,loopWorking=false,loopStarting=false,loopTimer=null,loopGeneration=0,quietCycles=0,wakeWaiting=true,ringConsent=false;
+let activeUtterance=null,audioContext=null,permissionTimer=null,silenceTimer=null,pendingSpeechFinish=null,voiceSessionConsent=false,voicePhase='off',playbackGeneration=0;
 function voiceFeedback(phase,message,heard){
   voicePhase=phase;$('voice-status').textContent=message;
   if(heard!==undefined)$('voice-heard').textContent=heard?'You: “'+heard+'”':'';
   $('voice-retry').hidden=!['error','no-speech','unsupported'].includes(phase);
   $('voice-feedback').dataset.phase=phase;document.body.dataset.voiceFeedback=phase;syncExecutiveState();
 }
+function voiceInterruptible(){return app.audioState==='speaking'||Boolean(commandTurns.current)||loopWorking;}
 function syncRing(){
-  const state=app.error||voicePhase==='error'?'error':app.busy?'thinking':app.audioState==='speaking'?'speaking':loopStarting?'thinking':loopActive&&wakeWaiting&&$('wake-word-toggle').checked?'waiting':app.audioState==='listening'?'listening':'idle';
-  $('nexus-ring').dataset.state=state;syncExecutiveState();$('nexus-ring').setAttribute('aria-pressed',String(loopActive));
-  $('nexus-ring').setAttribute('aria-label',loopActive?'Stop voice conversation':LoopRecognitionClass?'Talk to NEXUS':'Open text conversation');
+  const state=app.error||voicePhase==='error'?'error':app.audioState==='speaking'?'speaking':app.busy||loopWorking||loopStarting?'thinking':app.audioState==='listening'?'listening':loopActive&&wakeWaiting&&$('wake-word-toggle').checked?'waiting':'idle';
+  $('nexus-ring').dataset.state=state;$('nexus-ring').setAttribute('aria-pressed',String(loopActive));
+  $('nexus-ring').setAttribute('aria-label',voiceInterruptible()?'Interrupt and talk':loopActive?'Stop listening':LoopRecognitionClass?'Talk to NEXUS':'Open text conversation');
   $('nexus-ring').disabled=!loopActive&&(!app.loaded||app.stale||!(app.data.capabilities||[]).includes('propose'));
   $('ring-hint').textContent={error:'NEEDS ATTENTION',idle:'TAP TO TALK',listening:'LISTENING',thinking:loopStarting?'CONNECTING MIC':'THINKING',speaking:'SPEAKING',waiting:'SAY HEY NEXUS'}[state];
-  $('ring-caption').textContent=loopActive?(app.audioState==='listening'?'MICROPHONE ON · TAP TO STOP':'VOICE SESSION · TAP TO STOP'):LoopRecognitionClass?'MICROPHONE OFF':'VOICE UNAVAILABLE · TYPE BELOW';
+  $('ring-caption').textContent=loopActive?(app.audioState==='listening'?'MICROPHONE ON · TAP TO STOP':'VOICE SESSION · TAP TO INTERRUPT'):LoopRecognitionClass?'MICROPHONE OFF':'VOICE UNAVAILABLE · TYPE BELOW';
   if($('assistant-voice-status'))$('assistant-voice-status').textContent=!LoopRecognitionClass?'Unavailable in this browser':loopStarting?'Waiting for permission':loopActive?'Conversation active':'Ready when you tap NEXUS';
+  syncExecutiveState();
 }
 function syncVoiceControls(){syncDictationControls();syncRing();}
 function clearVoiceTimers(){clearTimeout(permissionTimer);clearTimeout(silenceTimer);clearTimeout(loopTimer);}
+function cancelPlayback(){
+  playbackGeneration++;const finish=pendingSpeechFinish;pendingSpeechFinish=null;activeUtterance=null;
+  finish?.();window.speechSynthesis?.cancel();
+}
 function stopVoiceLoop(){
   loopActive=false;loopWorking=false;loopStarting=false;loopGeneration++;clearVoiceTimers();
-  pendingSpeechFinish?.();pendingSpeechFinish=null;
-  try{loopRecognition?.abort();}catch{}
-  window.speechSynthesis?.cancel();activeUtterance=null;app.audioState='idle';syncRing();
+  const old=loopRecognition;loopRecognition=null;try{old?.abort();}catch{}
+  cancelPlayback();app.audioState='idle';syncRing();
 }
-function stopAudio(){stopVoiceLoop();stopDictation();voiceFeedback('off','Microphone off. Tap NEXUS when you’re ready.');}
+function stopAudio(){cancelStartupSpeech();stopVoiceLoop();stopDictation();cancelCommand();voiceFeedback('off','Microphone off. Tap NEXUS when you’re ready.');syncStatus();}
 function configureUtterance(utterance){
   const voices=window.speechSynthesis?.getVoices?.()||[],chosen=voices.find(voice=>voice.voiceURI===$('voice-choice').value);
   if(chosen)utterance.voice=chosen;
@@ -931,122 +968,145 @@ function loadVoiceChoices(){
   const selector=$('voice-choice'),voices=window.speechSynthesis?.getVoices?.()||[],previous=selector.value;
   selector.replaceChildren();const defaultOption=el('option','','System default');defaultOption.value='';selector.append(defaultOption);
   for(const voice of voices){const option=el('option','',voice.name+' · '+voice.lang);option.value=voice.voiceURI;selector.append(option);}
-  let preferred=previous;
-  try{preferred=preferred||localStorage.getItem('nexus.voice.choice')||'';}catch{}
+  let preferred=previous;try{preferred=preferred||localStorage.getItem('nexus.voice.choice')||'';}catch{}
   if(!voices.some(voice=>voice.voiceURI===preferred))preferred=voices.find(voice=>voice.lang==='en-GB')?.voiceURI||'';
   selector.value=preferred;
   $('speech-output-status').textContent=!('speechSynthesis' in window)?'Speech output is unavailable here. Replies still appear as text.':voices.length?'Choose an installed voice. Availability and sound depend on this device.':'Using your browser’s default voice. Installed voices may appear after the first spoken reply.';
 }
 function speak(text){speakDictation(text);}
-function sayInLoop(text,generation){
-  if(!loopActive||generation!==loopGeneration)return Promise.resolve();
-  lastVoiceReply=String(text);
+function playReply(text,valid,conversational=false){
+  cancelPlayback();
+  if(!valid())return Promise.resolve();
   if(!('speechSynthesis' in window)||typeof SpeechSynthesisUtterance==='undefined'){
-    stopVoiceLoop();voiceFeedback('unsupported','I replied below, but this browser has no speech output.');return Promise.resolve();
+    stopVoiceLoop();navigate('assistant');voiceFeedback('unsupported','Speech output is unavailable. Your reply is available as text.');return Promise.resolve();
   }
+  const generation=playbackGeneration;
   return new Promise(resolve=>{
-    window.speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(String(text).slice(0,1500));activeUtterance=utterance;configureUtterance(utterance);
+    const utterance=new SpeechSynthesisUtterance(String(text).slice(0,1500));activeUtterance=utterance;configureUtterance(utterance);
     let ended=false,started=false;
-    const finish=(failed=false)=>{if(ended)return;ended=true;clearTimeout(startWatch);clearTimeout(endWatch);pendingSpeechFinish=null;if(generation===loopGeneration){activeUtterance=null;app.audioState='idle';if(failed){stopVoiceLoop();voiceFeedback('error','Your reply is visible below. Speech playback failed; check the selected device voice.');}syncStatus();}resolve();};
-    const startWatch=setTimeout(()=>{if(!started){finish(true);window.speechSynthesis.cancel();}},7000),endWatch=setTimeout(()=>{finish(true);window.speechSynthesis.cancel();},60000);
+    const current=()=>!ended&&generation===playbackGeneration&&valid();
+    const finish=(failed=false)=>{
+      if(ended)return;const relevant=current();ended=true;clearTimeout(startWatch);clearTimeout(endWatch);
+      if(relevant){pendingSpeechFinish=null;activeUtterance=null;app.audioState='idle';
+        if(failed){stopVoiceLoop();voiceFeedback('error','Speech playback failed. Open conversation to read the reply, or choose another device voice.');}
+        syncStatus();
+      }resolve();
+    };
+    const startWatch=setTimeout(()=>{if(!started&&current()){finish(true);window.speechSynthesis.cancel();}},7000);
+    const endWatch=setTimeout(()=>{if(current()){finish(true);window.speechSynthesis.cancel();}},60000);
     pendingSpeechFinish=()=>finish();
-    utterance.onstart=()=>{started=true;clearTimeout(startWatch);if(generation===loopGeneration){app.audioState='speaking';voiceFeedback('speaking','Speaking — microphone paused.');syncStatus();}};
+    utterance.onstart=()=>{if(!current())return;started=true;clearTimeout(startWatch);app.audioState='speaking';if(conversational)voiceFeedback('speaking','Speaking — tap the orb to interrupt. Microphone paused.');syncStatus();};
     utterance.onend=()=>finish();utterance.onerror=event=>finish(!['canceled','interrupted'].includes(event.error));
     try{window.speechSynthesis.resume?.();window.speechSynthesis.speak(utterance);}catch{finish(true);}
   });
 }
+function sayInLoop(text,generation){
+  if(!loopActive||generation!==loopGeneration)return Promise.resolve();
+  if(!$('voice-output-toggle').checked){stopVoiceLoop();navigate('assistant');voiceFeedback('off','Spoken replies are off. Your response is available as text.');return Promise.resolve();}
+  return playReply(text,()=>loopActive&&generation===loopGeneration,true);
+}
 function scheduleLoop(){
   clearTimeout(loopTimer);if(!loopActive||loopWorking||loopStarting)return;
-  loopTimer=setTimeout(()=>{
-    if(!loopActive||loopWorking||loopStarting)return;
-    try{
-      loopStarting=true;loopHadResult=false;loopRecognition.lang=$('voice-language').value;voiceFeedback('starting','Connecting to your browser’s microphone. Allow access if prompted.');syncRing();
-      permissionTimer=setTimeout(()=>{if(!loopActive||!loopStarting)return;stopAudio();voiceFeedback('error','The microphone did not start. Check microphone permission and the browser’s speech service, then retry.');},12000);
-      loopRecognition.start();
-    }catch{stopAudio();voiceFeedback('error','The microphone could not start. Check browser permissions, or type your message.');}
-  },300);
+  loopTimer=setTimeout(startRecognitionAttempt,200);
+}
+function startRecognitionAttempt(){
+  if(!loopActive||loopWorking||loopStarting)return;
+  const generation=loopGeneration,workspace=app.workspace;
+  let recognition,hadResult=false;
+  const current=()=>loopActive&&loopRecognition===recognition&&generation===loopGeneration&&workspace===app.workspace;
+  const end=()=>{
+    if(!current())return;loopRecognition=null;clearTimeout(permissionTimer);clearTimeout(silenceTimer);loopStarting=false;
+    if(loopWorking)return;
+    if(!hadResult){quietCycles++;if(quietCycles>=3){stopAudio();voiceFeedback('no-speech','No transcript arrived. Check your microphone, selected language and speech-service connection, then retry.');return;}}
+    app.audioState='idle';scheduleLoop();syncStatus();
+  };
+  try{
+    recognition=new LoopRecognitionClass();loopRecognition=recognition;recognition.lang=$('voice-language').value;recognition.interimResults=true;recognition.continuous=false;
+    recognition.onstart=()=>{
+      if(!current()){try{recognition.abort();}catch{}return;}
+      clearTimeout(permissionTimer);loopStarting=false;app.audioState='listening';
+      voiceFeedback('listening',$('wake-word-toggle').checked&&wakeWaiting?'Listening for “Hey NEXUS”.':'I’m listening. Speak naturally.');syncStatus();
+      silenceTimer=setTimeout(()=>{if(current()&&!loopWorking){end();try{recognition.abort();}catch{}}},18000);
+    };
+    recognition.onresult=event=>{
+      if(!current()||loopWorking)return;
+      const part=speechParts(event);if(!part.text)return;
+      voiceFeedback('listening','Hearing you…',part.text);
+      if(part.final){hadResult=true;processVoice(part.text);}
+    };
+    recognition.onend=end;
+    recognition.onerror=event=>{
+      if(!current())return;
+      if(['no-speech','aborted'].includes(event.error)){end();try{recognition.abort();}catch{}return;}
+      const denied=['not-allowed','service-not-allowed'].includes(event.error);stopAudio();
+      const message=denied?'Microphone or speech-service permission was denied. Allow it in browser settings, then retry.':event.error==='network'?'The browser’s speech service could not connect. Check your internet connection or use text.':'Speech recognition stopped. Check the microphone and selected language, then retry or use text.';
+      $('nexus-response').textContent=message;voiceFeedback('error',message);
+    };
+    loopStarting=true;voiceFeedback('starting','Connecting to your microphone. Allow access if prompted.');syncStatus();
+    permissionTimer=setTimeout(()=>{if(current()&&loopStarting){stopAudio();voiceFeedback('error','The microphone did not start. Check browser permission, then retry or use text.');}},12000);
+    recognition.start();
+  }catch{stopAudio();voiceFeedback('error','The microphone could not start. Check browser permissions, then retry or use text.');}
 }
 function wakeBeep(){
   if(!audioContext||audioContext.state!=='running')return;const oscillator=audioContext.createOscillator(),gain=audioContext.createGain();oscillator.frequency.value=660;gain.gain.setValueAtTime(.025,audioContext.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audioContext.currentTime+.12);oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start();oscillator.stop(audioContext.currentTime+.12);
 }
 async function processVoice(transcript){
-  if(!loopActive||loopWorking)return;const generation=loopGeneration;loopWorking=true;loopStarting=false;quietCycles=0;clearTimeout(silenceTimer);
-  try{loopRecognition.stop();}catch{}
+  if(!loopActive||loopWorking)return;const generation=loopGeneration;loopWorking=true;loopStarting=false;quietCycles=0;clearTimeout(silenceTimer);clearTimeout(permissionTimer);
+  try{loopRecognition?.stop();}catch{}
+  app.audioState='idle';
   try{
     let text=String(transcript).trim();if(!text)return;
-    voiceFeedback('thinking','Heard you. Preparing a reply…',text);
-    if(/^(?:stop|bye|goodbye|stop nexus|berhenti)[.!]?$/i.test(text)){stopAudio();$('nexus-response').textContent='All right. Voice conversation stopped.';return;}
-    const wake=text.match(/^(?:hey|hi|halo)\s+(?:nexus|jarvis)[,.!\s]*(.*)$/i);
-    if($('wake-word-toggle').checked&&wakeWaiting&&!wake){voiceFeedback('waiting','Waiting for “Hey NEXUS” while this voice session is on.');return;}
-    if(wake){text=wake[1].trim();wakeWaiting=false;wakeBeep();await sayInLoop('Yes?',generation);if(!text)return;}
-    if(/^(?:approve|approve all|yes|confirm|setujui|approve the proposal|approve it)[.!]?$/i.test(text)){const answer='I can prepare changes, but you need to review and approve them in the Approval inbox.';$('nexus-response').textContent=answer;await sayInLoop(answer,generation);return;}
+    voiceFeedback('thinking','Heard you. Preparing a reply…',text);syncStatus();
+    if(voiceStopCommand(text)){stopAudio();$('nexus-response').textContent='Voice conversation stopped.';return;}
+    const wake=text.match(/^(?:hey|hi|halo)\s+(?:nexus|jarvis)\b[,.!\s]*(.*)$/i);
+    if($('wake-word-toggle').checked&&wakeWaiting&&!wake)return;
+    if(wake){text=wake[1].trim();wakeWaiting=false;wakeBeep();if(!text){await sayInLoop('Yes?',generation);return;}}
     const destination=workspaceCommandDestination(text);
     if(destination){
-      const selected=destination==='home'?{label:'Home'}:app.workspaces.find(workspace=>workspace.id===destination);
-      const answer=destination==='home'?'Returning Home.':selected?'Opening '+selected.label+' workspace.':'That workspace is not available in this installation.';
-      $('nexus-response').textContent=answer;
-      if(selected)openWorkspaceByCommand(destination);
-      else await sayInLoop(answer,generation);
-      return;
+      if(openWorkspaceByCommand(destination))return;
+      const answer='That workspace is not available in this installation.';$('nexus-response').textContent=answer;await sayInLoop(answer,generation);return;
+    }
+    if(/^(?:approve(?: all| it| the proposal)?|yes|confirm|setujui|ya|konfirmasi)[.!]?$/i.test(text.replace(/^nexus[,\s:]*/i,''))){
+      const answer='Please review and approve changes manually in the Approval inbox.';$('nexus-response').textContent=answer;await sayInLoop(answer,generation);return;
     }
     const previousDraft=ledgerDraft,local=ledgerVoice(text);let response,display;
     if(local!==null)response=display=local;
     else{
       const ok=await command(text,{stay:true,fromVoice:true});if(!loopActive||generation!==loopGeneration)return;
-      display=ok?app.lastReply?.message:'I couldn’t confirm that request. Please refresh the workspace before retrying.';
-      response=ok?(app.lastReply?.voice_message||display):display;
+      display=ok?app.lastReply?.message:'I couldn’t confirm the reply. Check the conversation before retrying.';response=ok?(app.lastReply?.voice_message||display):display;
     }
-    $('nexus-response').textContent=String(display||'No reply was returned.').slice(0,1000);await sayInLoop(response||'I couldn’t produce a reply. Please try typing that.',generation);
-    if(ledgerDraft&&ledgerDraft!==previousDraft){navigate('approvals');return;}
-  }catch(error){stopVoiceLoop();$('nexus-response').textContent='I couldn’t process that. '+error.message;voiceFeedback('error','The request failed. You can retry or type your message.');}
+    $('nexus-response').textContent=String(display||'No reply was returned.').slice(0,1500);
+    await sayInLoop(response||'No reply was returned. Please use text.',generation);
+    if(loopActive&&generation===loopGeneration&&ledgerDraft&&ledgerDraft!==previousDraft)navigate('approvals');
+  }catch{if(generation===loopGeneration){stopAudio();voiceFeedback('error','I couldn’t process that request. Open conversation to check the result before retrying.');}}
   finally{if(loopActive&&generation===loopGeneration){loopWorking=false;app.audioState='idle';syncStatus();scheduleLoop();}}
 }
 function setupVoice(onState){
-  setupDictation(onState);const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;LoopRecognitionClass=Recognition;
+  setupDictation(onState);LoopRecognitionClass=window.SpeechRecognition||window.webkitSpeechRecognition;
   loadVoiceChoices();window.speechSynthesis?.addEventListener?.('voiceschanged',loadVoiceChoices);
-  $('voice-choice').addEventListener('change',()=>{try{localStorage.setItem('nexus.voice.choice',$('voice-choice').value);}catch{};});
-  voiceFeedback(Recognition?'off':'unsupported',Recognition?'Microphone off. Tap NEXUS and speak naturally.':'Voice recognition isn’t supported in this browser. You can still type below.');
-  function initializeLoopRecognition(){
-    if(loopRecognition||!Recognition)return;loopRecognition=new Recognition();loopRecognition.interimResults=true;loopRecognition.continuous=false;
-    loopRecognition.onstart=()=>{
-      clearTimeout(permissionTimer);if(!loopActive){loopRecognition.abort();return;}loopStarting=false;app.audioState='listening';voiceFeedback('listening',$('wake-word-toggle').checked&&wakeWaiting?'Listening for “Hey NEXUS”.':'I’m listening. Speak naturally.');syncStatus();
-      silenceTimer=setTimeout(()=>{if(loopActive&&!loopWorking){voiceFeedback('no-speech','I haven’t heard anything yet. Check your microphone and try again.');loopRecognition.stop();}},18000);
-    };
-    loopRecognition.onresult=event=>{
-      if(!loopActive||loopWorking)return;const results=Array.from(event.results),text=results.map(result=>result[0]?.transcript||'').join(' ').trim();
-      if(!text)return;voiceFeedback('listening','Hearing you…',text);clearTimeout(silenceTimer);
-      if(results.some(result=>result.isFinal!==false)){loopHadResult=true;processVoice(text.slice(0,3000));}
-      else silenceTimer=setTimeout(()=>{if(loopActive&&!loopWorking)loopRecognition.stop();},12000);
-    };
-    loopRecognition.onend=()=>{
-      clearTimeout(permissionTimer);clearTimeout(silenceTimer);loopStarting=false;if(!loopActive)return;
-      if(!loopHadResult){quietCycles++;if(quietCycles>=3){wakeWaiting=true;quietCycles=0;if(!$('wake-word-toggle').checked){stopAudio();voiceFeedback('no-speech','I didn’t receive a transcript. Check the microphone, selected language and internet connection, then retry.');return;}}voiceFeedback('no-speech','No transcript arrived. Listening again — or tap to stop.');}
-      if(!loopWorking){app.audioState='idle';syncStatus();scheduleLoop();}
-    };
-    loopRecognition.onerror=event=>{
-      loopStarting=false;if(event.error==='aborted')return;
-      if(event.error==='no-speech'){voiceFeedback('no-speech','I didn’t catch any speech. Check your microphone and try again.');return;}
-      const denied=['not-allowed','service-not-allowed'].includes(event.error);stopAudio();
-      const message=denied?'Microphone or speech-service permission was denied. Allow it in browser settings, then retry.':event.error==='network'?'Your browser’s speech service could not connect. Check the internet connection or type your message.':'Speech recognition stopped ('+event.error+'). Try again or use text.';
-      $('nexus-response').textContent=message;voiceFeedback('error',message);
-    };
-  }
+  $('voice-choice').addEventListener('change',()=>{try{localStorage.setItem('nexus.voice.choice',$('voice-choice').value);}catch{}});
+  try{$('voice-output-toggle').checked=localStorage.getItem('nexus.voice.output')!=='false';}catch{}
+  $('voice-output-toggle').onchange=()=>{try{localStorage.setItem('nexus.voice.output',String($('voice-output-toggle').checked));}catch{}if(!$('voice-output-toggle').checked)stopAudio();};
+  voiceFeedback(LoopRecognitionClass?'off':'unsupported',LoopRecognitionClass?'Microphone off. Tap the orb to talk. Tap during a reply to interrupt; Escape stops.':'Voice recognition is unavailable. Open conversation to type.');
   function startLoop(){
-    initializeLoopRecognition();if(!loopRecognition||app.busy||!app.loaded)return;stopDictation();loopActive=true;loopGeneration++;wakeWaiting=$('wake-word-toggle').checked;quietCycles=0;
+    if(!LoopRecognitionClass||!app.loaded||app.stale||!can('propose'))return;
+    stopAudio();if(app.busy)return; // A manual approval operation cannot be interrupted here.
+    app.error=false;loopActive=true;loopGeneration++;wakeWaiting=$('wake-word-toggle').checked;quietCycles=0;
     const AudioContext=window.AudioContext||window.webkitAudioContext;if(AudioContext){try{audioContext=audioContext||new AudioContext();audioContext.resume().catch(()=>{});}catch{}}
-    scheduleLoop();syncStatus();
+    voiceFeedback('starting','Connecting to your microphone.');scheduleLoop();syncStatus();
   }
-  for(const mic of all('[data-mic-target]')){const original=mic.onclick;mic.onclick=()=>{ringConsent=false;if(loopActive)stopAudio();$('voice-consent-description').textContent='Your browser may use an external speech service. Dictation fills the text box so you can review it before sending.';original();};}
+  for(const mic of all('[data-mic-target]')){const original=mic.onclick;mic.onclick=()=>{ringConsent=false;if(loopActive||activeUtterance||commandTurns.current)stopAudio();$('voice-consent-description').textContent='Your browser may use an external speech service. Dictation fills the text box for review before sending.';original();};}
   const startDictation=$('voice-start').onclick;
   $('voice-start').onclick=()=>{if(!ringConsent){startDictation();return;}$('voice-consent').close();ringConsent=false;voiceSessionConsent=true;startLoop();};
   $('nexus-ring').addEventListener('click',()=>{
-    if(!LoopRecognitionClass){navigate('assistant');$('chat-notice').textContent='Voice recognition is unavailable in this browser. You can type your command here.';$('chat-input').focus();return;}
+    if(!LoopRecognitionClass){stopAudio();navigate('assistant');$('chat-notice').textContent='Voice recognition is unavailable in this browser. Type your command here.';$('chat-input').focus();return;}
+    if(voiceInterruptible()){stopAudio();if(voiceSessionConsent){startLoop();return;}}
     if(loopActive){stopAudio();return;}if(voiceSessionConsent){startLoop();return;}
-    ringConsent=true;app.focusReturn=$('nexus-ring');$('voice-consent-description').textContent='Your browser may process audio through an external speech service. This starts a conversation: listen, send your words, reply aloud, then listen again. Nothing listens before you start. Tap NEXUS or say stop to end. Changes always need manual approval.';$('voice-consent').showModal();
+    ringConsent=true;app.focusReturn=$('nexus-ring');$('voice-consent-description').textContent='Your browser may send speech to an external service. Voice conversation sends recognized final words to the active workspace and may reply aloud. Tap the orb during a reply to interrupt; press Escape to stop. Changes require manual approval.';$('voice-consent').showModal();
   });
   $('voice-retry').addEventListener('click',()=>$('nexus-ring').click());
   $('wake-word-toggle').addEventListener('change',()=>{wakeWaiting=true;quietCycles=0;syncRing();});
-  window.addEventListener('pagehide',stopAudio);syncRing();
+  window.addEventListener('pagehide',stopAudio);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopAudio();});syncRing();
 }
 
 function setupLedger(){
@@ -1097,11 +1157,12 @@ function renderExecutive(){
 }
 function syncExecutiveState(){
  if(!$('orb-stage'))return;
- const state=orbState({busy:app.busy||loopWorking,audio:app.audioState,error:app.error||voicePhase==='error'});
+ const thinking=(app.busy||loopWorking||loopStarting)&&!['speaking','listening'].includes(app.audioState);
+ const state=orbState({busy:thinking,audio:app.audioState,error:app.error||voicePhase==='error'});
  $('orb-stage').dataset.state=state;
  $('orb-state-label').textContent={idle:'Ready when you are',listening:'Listening to you',thinking:'Thinking',speaking:'Speaking',error:'Needs attention · see message below'}[state];
- $('global-voice').disabled=!loopActive&&(!LoopRecognitionClass||!app.loaded||app.stale||app.busy||!can('propose'));
- $('global-voice').textContent=loopActive?'Stop voice conversation':LoopRecognitionClass?'Talk to NEXUS':'Voice unavailable · use text';
+ $('global-voice').disabled=!loopActive&&(!app.loaded||app.stale||!can('propose'));
+ $('global-voice').textContent=voiceInterruptible()?'Interrupt and talk':loopActive?'Stop listening':LoopRecognitionClass?'Talk to NEXUS':'Open text conversation';
 }
 function renderHeadquarters(){
  const config=workspaceById(app.workspace);

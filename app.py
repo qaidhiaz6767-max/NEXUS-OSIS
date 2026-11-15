@@ -47,7 +47,7 @@ STATIC = {
     "/style.css": ("web/style.css", "text/css; charset=utf-8"),
     "/app.js": ("web/app.js", "text/javascript; charset=utf-8"),
 }
-for module in ("state", "api", "domain", "ui", "views", "forms", "voice", "executive"):
+for module in ("state", "api", "domain", "ui", "views", "forms", "voice", "executive", "voice-session"):
     STATIC[f"/{module}.js"] = (f"web/{module}.js", "text/javascript; charset=utf-8")
 
 # Only these five optional, local photographs can be served. No directory browsing.
@@ -1194,6 +1194,10 @@ def handler_factory(
         def do_GET(self):
             try:
                 self.get_request()
+            except (BrokenPipeError, ConnectionResetError):
+                # Navigation/interruption may close a local browser request.
+                # Do not attempt a second response to the disconnected client.
+                self.close_connection = True
             except Exception as exc:
                 logging.error("NEXUS read failed: %s", type(exc).__name__)
                 self.json_response(
@@ -1420,6 +1424,8 @@ def handler_factory(
                     self.json_response({"error": "Not found"}, code=404)
                     return
                 self.json_response(result)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
             except PermissionError as exc:
                 self.json_response({"error": str(exc)}, code=403)
             except (ValueError, json.JSONDecodeError) as exc:
